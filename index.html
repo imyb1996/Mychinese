@@ -349,6 +349,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-gate-status.warn { color: #92400e; background: var(--yl); border-radius: 8px; padding: 6px 10px; }
 .ui-gate-status.bad { color: var(--acc); background: var(--accl); border-radius: 8px; padding: 6px 10px; }
 
+.btn.sc-up, .btn.sc-dn { font-weight: 800; font-family: var(--fm); min-width: 44px; justify-content: center; }
+.btn.sc-up { color: #188038; border-color: #188038; } .btn.sc-dn { color: #c5221f; border-color: #c5221f; }
+.btn.sc-up:hover { background: rgba(24,128,56,.12); } .btn.sc-dn:hover { background: rgba(197,34,31,.12); }
+
 /* ===== quiz.css ===== */
 /* ============================================================
    quiz.css — quiz wizard + scores statistics. All classes prefixed qz-.
@@ -5277,6 +5281,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
   function loadMore() { if (shown >= blocks.length) return; S.limit = shown + STEP; appendBlocks(S.limit); }
 
+  // +1 / −1 on every selected item: a manual correction of the quiz score (it does not count as a test attempt; the min/max limit of the score settings still applies)
+  function bumpSelected(d) {
+    if (!MC.Scores || !MC.Scores.applyDeltas) return MC.toast('وحدة الدرجات غير متاحة', 'err');
+    const ids = Array.from(S.sel); if (!ids.length) return;
+    MC.Scores.applyDeltas(ids.map((id) => [id, d, 0]));
+    MC.toast((d > 0 ? 'أُضيفت درجة (+1) إلى ' : 'نُقصت درجة (−1) من ') + ids.length + ' عنصرًا', 'ok');
+  }
   function renderSelbar() {
     const n = S.sel.size; el.selbar.hidden = !n; if (!n) return;
     el.selbar.innerHTML = '';
@@ -5288,6 +5299,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       h('button', { class: 'btn', title: 'طباعة المحدد', onclick: () => { need('Print', 'open') && MC.Print.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('print')),
       h('button', { class: 'btn', title: 'اختبار على المحدد', onclick: () => { need('Quiz', 'open') && MC.Quiz.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('quiz')),
       h('button', { class: 'btn', title: 'اختبار بالذكاء الاصطناعي على المحدد', onclick: () => { need('AIQ', 'open') && MC.AIQ.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('sparkle')),
+      h('button', { class: 'btn sc-up', title: 'إضافة درجة (+1) لكل المحدد', onclick: () => bumpSelected(1) }, '+1'),
+      h('button', { class: 'btn sc-dn', title: 'إنقاص درجة (−1) من كل المحدد', onclick: () => bumpSelected(-1) }, '−1'),
       h('button', { class: 'btn dng', onclick: deleteSelected }, MC.ico('del'), 'حذف'),
       h('button', { class: 'btn', onclick: () => { S.sel.clear(); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('x'), 'إلغاء'));
   }

@@ -101,7 +101,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* modal */
 .md-back { position: fixed; inset: 0; background: rgba(15, 18, 28, .55); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 16px; animation: mdfade .15s; backdrop-filter: blur(2px); }
 .md-box { background: var(--card); border-radius: var(--rl); width: 100%; max-width: 760px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-shadow: var(--shl); overflow: hidden; animation: mdup .18s; }
-.md-box.md-sm { max-width: 420px; } .md-box.md-lg { max-width: 1000px; } .md-box.md-full { max-width: 1200px; height: calc(100vh - 32px); }
+.md-box.md-sm { max-width: 420px; } .md-box.md-cm { max-width: 560px; } .md-box.md-lg { max-width: 1000px; } .md-box.md-full { max-width: 1200px; height: calc(100vh - 32px); }
 .md-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--bd); }
 .md-title { font-weight: 700; font-size: 16px; } .md-x { border: 0; background: transparent; font-size: 26px; line-height: 1; cursor: pointer; color: var(--dm); padding: 0 6px; } .md-x:hover { color: var(--acc); }
 .md-body { padding: 14px 16px; overflow: auto; flex: 1 1 auto; } .md-foot { display: flex; gap: 8px; justify-content: flex-start; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--bd); background: var(--sf); }
@@ -201,6 +201,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-cls-c1 { border: 1px solid var(--bd); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
 .ui-cls-c1 > .hd { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--gs); border-inline-start: 4px solid var(--gc); font-weight: 700; flex-wrap: wrap; }
 .ui-cls-c2 { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 10px; border-top: 1px solid var(--bdl); font-size: 14px; }
+.ui-cls-c1 .ord, .ui-cls-c2 .ord { flex: none; min-width: 30px; text-align: center; font-family: var(--fm); font-weight: 800; font-size: 13px; line-height: 1; padding: 5px 7px; border-radius: 8px; letter-spacing: .5px; }
+.ui-cls-c1 > .hd .ord { background: var(--gc); color: #fff; } .ui-cls-c2 .ord { background: var(--gs); color: var(--gc); border: 1px solid var(--gc); font-size: 12px; padding: 4px 6px; }
+.ui-cls-add { width: 100%; margin: 4px 0 10px; } .md-box.md-cm .ui-cls-add:last-child { margin: 4px 0 0; }
 .ui-cls-c2 .nm, .ui-cls-c1 .nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ui-cls-c2 .n, .ui-cls-c1 .n { font-family: var(--fm); font-size: 11.5px; color: var(--dm); }
 .ui-slid { display: grid; grid-template-columns: 90px 1fr 54px; gap: 10px; align-items: center; margin-bottom: 8px; } .ui-slid input[type=range] { width: 100%; accent-color: var(--bl); }
@@ -4608,6 +4611,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const MC = g.MC; const h = MC.h; const esc = MC.esc;
   const UI = (MC.UI = MC.UI || {});
   const fld = (label, node, extra) => h('div', { class: 'fld' + (extra ? ' ' + extra : '') }, h('label', { text: label }), node);
+  const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
   const place = (v) => v.groupLabel + ' › ' + v.c1name + ' › ' + v.c2name;
 
   /* ---------- class picker: group -> c1 -> c2 (with quick "+ new") ---------- */
@@ -4761,30 +4765,33 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         if (await MC.confirm(msg, { danger: true, okLabel: 'حذف الكل' })) { retry(); MC.toast('تم الحذف', 'ok'); }
       }
     };
+    // «إضافة مجموعة رئيسية» is shown at the top and at the bottom of the list (the new group is added at the end of the current section)
+    const addC1Btn = () => h('button', { class: 'btn pri ui-cls-add', type: 'button', text: '＋ إضافة مجموعة رئيسية', onclick: async () => { const r = await askClass({ title: 'مجموعة رئيسية جديدة', level: 1 }); if (r) MC.addClass1(Object.assign({ group }, r)); } });
     const render = () => {
       body.innerHTML = '';
       const tabs = h('div', { class: 'ui-groups', style: { paddingTop: 0 } });
       MC.groupsSorted().forEach((gr) => tabs.appendChild(h('button', { class: 'ui-gchip' + (gr.group === group ? ' on' : ''), type: 'button', style: { '--gc': MC.groupStyle(gr.group).color }, onclick: () => { group = gr.group; render(); } }, h('i'), gr.label_ar)));
       body.appendChild(tabs);
+      body.appendChild(addC1Btn());
       const st = MC.groupStyle(group);
       MC.class1Of(group).forEach((c1) => {
         const kids = MC.class2Of(c1.c1); const cnt = kids.reduce((s, k) => s + MC.itemsOf(k.c2).length, 0);
-        const hd = h('div', { class: 'hd' }, h('span', { class: 'nm', text: c1.name }), h('span', { class: 'tag', text: 'مستوى ' + c1.level }), c1.link ? h('a', { href: c1.link, target: '_blank', rel: 'noopener', text: '▶', title: c1.link }) : null, h('span', { class: 'n', text: cnt + ' عنصر' }),
+        const hd = h('div', { class: 'hd' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الرئيسية', text: pad2(c1.sort) }), h('span', { class: 'nm', text: c1.name }), h('span', { class: 'tag', text: 'مستوى ' + c1.level }), c1.link ? h('a', { href: c1.link, target: '_blank', rel: 'noopener', text: '▶', title: c1.link }) : null, h('span', { class: 'n', text: cnt + ' عنصر' }),
           sm('up', 'أعلى', () => MC.moveClass1(c1.c1, -1)), sm('down', 'أسفل', () => MC.moveClass1(c1.c1, 1)),
           sm('edit', 'تعديل', async () => { const r = await askClass({ title: 'تعديل المجموعة الرئيسية', name: c1.name, level: c1.level, link: c1.link }); if (r) MC.updateClass1(c1.c1, r); }),
           sm('add', 'إضافة مجموعة فرعية', async () => { const n = await MC.prompt('اسم المجموعة الفرعية', '', { title: 'مجموعة فرعية جديدة في «' + c1.name + '»' }); if (n && n.trim()) MC.addClass2({ c1: c1.c1, name: n.trim() }); }),
           sm('del', 'حذف', async () => { const r = MC.deleteClass1(c1.c1); await del(r, 'المجموعة «' + c1.name + '»', () => MC.deleteClass1(c1.c1, { force: true })); }, 'dng'));
         const box = h('div', { class: 'ui-cls-c1', style: { '--gc': st.color, '--gs': st.soft } }, hd);
-        kids.forEach((k) => box.appendChild(h('div', { class: 'ui-cls-c2' }, h('span', { class: 'nm', text: k.name }), h('span', { class: 'n', text: MC.itemsOf(k.c2).length }),
+        kids.forEach((k) => box.appendChild(h('div', { class: 'ui-cls-c2' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الفرعية', text: pad2(k.sort) }), h('span', { class: 'nm', text: k.name }), h('span', { class: 'n', text: MC.itemsOf(k.c2).length }),
           sm('up', 'أعلى', () => MC.moveClass2(k.c2, -1)), sm('down', 'أسفل', () => MC.moveClass2(k.c2, 1)),
           sm('edit', 'إعادة تسمية', async () => { const n = await MC.prompt('الاسم', k.name, { title: 'إعادة تسمية المجموعة الفرعية' }); if (n && n.trim()) MC.updateClass2(k.c2, { name: n.trim() }); }),
           sm('del', 'حذف', async () => { const r = MC.deleteClass2(k.c2); await del(r, 'المجموعة «' + k.name + '»', () => MC.deleteClass2(k.c2, { force: true })); }, 'dng'))));
         if (!kids.length) box.appendChild(h('div', { class: 'ui-cls-c2 hint', text: 'لا توجد مجموعات فرعية — استخدم ＋ لإضافة مجموعة فرعية' }));
         body.appendChild(box);
       });
-      body.appendChild(h('button', { class: 'btn pri', type: 'button', text: '＋ مجموعة رئيسية جديدة في هذا القسم', onclick: async () => { const r = await askClass({ title: 'مجموعة رئيسية جديدة', level: 1 }); if (r) MC.addClass1(Object.assign({ group }, r)); } }));
+      body.appendChild(addC1Btn());
     };
-    const m = MC.modal.open({ title: '🗂 إدارة المجموعات', body, className: 'md-lg', footer: [{ label: 'إغلاق', cls: 'pri', onClick: (c) => c() }], onClose: () => { if (off) off(); } });
+    const m = MC.modal.open({ title: '🗂 إدارة المجموعات', body, className: 'md-cm', footer: [{ label: 'إغلاق', cls: 'pri', onClick: (c) => c() }], onClose: () => { if (off) off(); } });
     off = MC.on('data', render); render(); return m;
   };
 
@@ -4811,8 +4818,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       h('div', { class: 'row nogrow', style: { alignItems: 'center', marginBottom: '10px' } }, h('span', { class: 'lbl', text: 'طريقة العرض' }), mkSeg([['list', '☰ قائمة'], ['cards', '⊞ بطاقات']], () => MC.settings.view, (v) => MC.setSetting('view', v))),
       h('div', { class: 'row nogrow', style: { alignItems: 'center', marginBottom: '10px' } }, h('span', { class: 'lbl', text: 'المظهر' }), mkSeg([['light', '☀ فاتح'], ['dark', '🌙 داكن']], () => MC.settings.theme, (v) => MC.setSetting('theme', v))),
       h('div', { class: 'row nogrow' }, h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: MC.settings.grouped, onchange: (e) => MC.setSetting('grouped', e.target.checked) }), 'عرض العناصر تحت عناوين المجموعات'), h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: MC.settings.showSort, onchange: (e) => MC.setSetting('showSort', e.target.checked) }), 'إظهار رقم الترتيب')));
-    const cls = sec('المجموعات', h('button', { class: 'btn', type: 'button', html: MC.icon('layers') + ' إدارة المجموعات…', onclick: () => UI.openClassManager(MC.UI.state.group) }));
-    body.append(sec('اللغات الظاهرة في القائمة', langs), fonts, disp, cls);
+    body.append(sec('اللغات الظاهرة في القائمة', langs), fonts, disp);
     MC.modal.open({ title: '⚙ الإعدادات', body, className: 'md-lg', footer: [{ label: 'تم', cls: 'pri', onClick: (c) => c() }] });
     if (focus === 'fonts') setTimeout(() => fonts.scrollIntoView({ block: 'start' }), 60);
   };
@@ -4905,7 +4911,6 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       bt('download', 'تصدير الملف المحدّث (Excel بصيغة Mychinese_Master)', () => UI.exportMaster()),
       bt('upload', 'استيراد ملف Excel (Mychinese_Master)', () => UI.importMaster()),
       bt('stats', 'الدرجات: إحصائيات وتصدير واستيراد', () => { MC.modal.closeAll(); MC.Quiz && MC.Quiz.openStats ? MC.Quiz.openStats() : MC.toast('وحدة الاختبارات غير متاحة', 'err'); }),
-      bt('layers', 'إدارة المجموعات', () => UI.openClassManager(MC.UI.state.group)),
       hc ? bt('show', 'إظهار كل العناصر المخفية (' + hc + ')', async () => { if (await MC.confirm('إعادة عرض ' + hc + ' عنصرًا مخفيًا؟')) { MC.clearHidden(); MC.UI.state.hiddenMode = 'exclude'; MC.modal.closeAll(); MC.toast('أُعيد عرض العناصر المخفية', 'ok'); } }) : null,
       bt('clean', 'فحص وإصلاح الترقيم', () => { const p = MC.normalize(); MC.persistNow(); MC.emit('data'); MC.toast(p.length ? 'وُجدت ' + p.length + ' ملاحظة: ' + p[0] : 'الترقيم سليم ✔', p.length ? 'err' : 'ok'); }),
       bt('refresh', 'إعادة تحميل البيانات المضمّنة (تمسح تعديلاتك)', async () => { if (await MC.confirm('مسح كل تعديلاتك والعودة للبيانات المضمّنة في التطبيق؟\nصدّر ملفك أولًا إن أردت الاحتفاظ بها.', { danger: true, okLabel: 'مسح وإعادة تحميل' })) { MC.resetToEmbedded(); MC.UI.state.sel.clear(); MC.modal.closeAll(); MC.toast('تمت إعادة التحميل', 'ok'); } }, 'dng'));
@@ -5024,6 +5029,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const aiBtn = btn('sparkle', 'اختبار AI', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('AIQ', 'open') && MC.AIQ.open(r, { title: UI.scopeTitle() }); }, '', 'اختبار بالذكاء الاصطناعي: نسخ نص جاهز لأي مساعد');
     const statsBtn = btn('stats', 'الدرجات', () => need('Quiz', 'openStats') && MC.Quiz.openStats());
     const setBtn = btn('settings', 'الإعدادات', () => UI.openSettings());
+    const clsBtn = btn('layers', 'إدارة المجموعات', () => UI.openClassManager(S.group), '', 'إدارة المجموعات: إضافة وترتيب وتعديل وحذف المجموعات الرئيسية والفرعية');
     const dataBtn = btn('data', 'البيانات', () => UI.openData());
     el.chips = h('nav', { class: 'ui-groups', 'aria-label': 'مصادر البيانات' });
     el.lvl = h('select', { class: 'sel', 'aria-label': 'المستوى', onchange: (e) => { S.level = e.target.value; S.limit = STEP; render(); } });
@@ -5052,7 +5058,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     //  1) logo + title | source tabs   2) add | print | quiz | settings + data   3) search | group lists | view buttons
     const top = h('header', { class: 'ui-top' },
       h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), cluster('ui-c-tabs', el.chips)),
-      h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, dataBtn)),
+      h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, clsBtn, dataBtn)),
       h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear)), sepEl(), cluster('ui-c-class', (() => { const l = lsel('المستوى', el.lvl); l.classList.add('lvl'); return l; })(), lsel('المجموعة الرئيسية', el.c1), lsel('المجموعة الفرعية', el.c2)), sepEl(), cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });

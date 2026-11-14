@@ -2918,6 +2918,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     /* ---------- setup screen ---------- */
     function renderSetup() {
       const cfg = ui.cfg; ui.phase = 'setup';
+      saveSetup(cfg);                                   // every change of the options is remembered (not only when the quiz is started)
       m.setTitle(opts.title || 'اختبار');
       const body = m.body; clear(body);
       const c = _normCfg(cfg);
@@ -3787,48 +3788,70 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 /* ============================================================
    aiquiz.js — "اختبار بالذكاء الاصطناعي": builds a ready-to-paste prompt from the shown/selected items,
    so any AI assistant (ChatGPT, Claude, Gemini…) can write an exam on exactly those lessons.
+   The options mirror the app's own quiz: question language(s), answer language, question types, number of questions.
    Nothing is sent anywhere by the app: the user copies the text and pastes it in the assistant of their choice.
-   Depends on core.js (MC.store) and, at call time only, on dom.js (MC.h, MC.modal, MC.toast).
-   Pure, tested part: MC.AIQ.buildPrompt(rows, opts)
+   Depends on core.js (MC.store, MC.LANGS) and, at call time only, on dom.js (MC.h, MC.modal, MC.toast).
+   Pure, tested part: MC.AIQ.buildPrompt(rows, opts)   opts = { q:[langs], a:'ar', types:[ids], count, answers:'end'|'each'|'none' }
+   The last choices are remembered in this browser (key mc.aiq.v1).
    ============================================================ */
 (function (g) {
   'use strict';
   const MC = g.MC = g.MC || {};
   const AIQ = MC.AIQ = {};
 
+  const LANG = { zh: 'الصينية (الحروف الصينية)', pin: 'البينيين (النطق)', ar: 'العربية', en: 'الإنجليزية' };
+  const LKEYS = ['zh', 'pin', 'ar', 'en'];
+  const SHORT = { zh: 'صيني', pin: 'بينيين', ar: 'عربي', en: 'إنجليزي' };
   const TYPES = [
-    { id: 'mcq', label: 'اختيار من متعدد (4 خيارات)', line: 'اختيار من متعدد بأربعة خيارات، وتكون الخيارات الخاطئة قريبة من الصحيحة في المعنى أو الشكل (من نفس الدروس) لا عشوائية.' },
-    { id: 'fill', label: 'إكمال الفراغ في الجملة', line: 'إكمال الفراغ: جملة صينية حُذفت منها كلمة واحدة مع إعطاء المعنى العربي، والمطلوب كتابة الكلمة الناقصة.' },
-    { id: 'ar2zh', label: 'ترجمة من العربية إلى الصينية', line: 'ترجمة من العربية إلى الصينية.' },
-    { id: 'zh2ar', label: 'ترجمة من الصينية إلى العربية', line: 'ترجمة من الصينية إلى العربية.' },
-    { id: 'pin', label: 'كتابة البينيين لكلمة صينية', line: 'كتابة النطق (البينيين) لكلمة أو جملة صينية.' },
-    { id: 'tf', label: 'صح أو خطأ (ترجمة معروضة)', line: 'صح أو خطأ: تُعرض كلمة صينية مع ترجمة، والمطلوب الحكم على صحة الترجمة (اجعل نصف الأسئلة خاطئة).' },
+    { id: 'write', label: '⌨️ كتابة' },
+    { id: 'mc', label: '🔘 اختيار من متعدد' },
+    { id: 'tf', label: '⚖️ صح أم خطأ' },
+    { id: 'fill', label: '🧩 إكمال الفراغ' },
   ];
-  const DEFAULTS = { count: 15, types: ['mcq', 'fill', 'ar2zh'], answers: 'end', maxItems: 300 };
-  AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS;
+  const DEFAULTS = { q: ['zh'], a: 'ar', types: ['mc', 'write', 'fill'], count: 10, answers: 'end', maxItems: 300 };
+  AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS; AIQ.LANGS = LKEYS;
   AIQ.COUNTS = [2, 3, 5, 10, 15, 20, 30, 50];
   AIQ.countLabel = (n) => (n === 2 ? 'سؤالان' : n <= 10 ? n + ' أسئلة' : n + ' سؤالًا');
 
   const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  const names = (ks) => ks.map((k) => LANG[k]).join(' + ');
 
-  // Items grouped by lesson (main group / sub group), one compact line each: «zh | pinyin | ar | en»
-  function itemsBlock(rows, maxItems) {
+  // Same rule as the app's quiz: the answer language is never also a question language, and there is always at least one question language.
+  AIQ.normOpts = (o) => {
+    const x = Object.assign({}, DEFAULTS, o || {});
+    x.a = LKEYS.indexOf(x.a) >= 0 ? x.a : DEFAULTS.a;
+    x.q = (Array.isArray(x.q) ? x.q : DEFAULTS.q).filter((k, i, arr) => LKEYS.indexOf(k) >= 0 && k !== x.a && arr.indexOf(k) === i);
+    if (!x.q.length) x.q = [x.a === 'zh' ? 'ar' : 'zh'];
+    x.types = TYPES.map((t) => t.id).filter((id) => (Array.isArray(x.types) ? x.types : []).indexOf(id) >= 0);
+    if (!x.types.length) x.types = ['mc'];
+    x.count = Math.max(1, Math.min(100, parseInt(x.count, 10) || DEFAULTS.count));
+    x.answers = ['end', 'each', 'none'].indexOf(x.answers) >= 0 ? x.answers : 'end';
+    return x;
+  };
+
+  function typeLine(id, qs, a) {
+    const Q = names(qs); const A = LANG[a];
+    if (id === 'write') return 'كتابة: يُعرض عليّ النص بـ(' + Q + ') وأكتب أنا الإجابة بـ(' + A + ') بدون خيارات.';
+    if (id === 'mc') return 'اختيار من متعدد: يُعرض النص بـ(' + Q + ') مع أربعة خيارات بـ(' + A + ') واحد منها صحيح، والخيارات الخاطئة قريبة من الصحيحة في المعنى أو الشكل ومن نفس الدروس (لا عشوائية).';
+    if (id === 'tf') return 'صح أم خطأ: يُعرض نص بـ(' + Q + ') ومعه إجابة مقترحة بـ(' + A + ') وأحكم أنا على صحتها (اجعل نصف الأسئلة خاطئة).';
+    return 'إكمال الفراغ: جملة أو عبارة بـ(' + Q + ') حُذفت منها كلمة واحدة وتُعطى لي الكلمة المقابلة بـ(' + A + ')، وأكتب الكلمة الناقصة.';
+  }
+
+  // Items grouped by lesson (main group / sub group), one compact line each, columns = the languages used by the quiz.
+  function itemsBlock(rows, cols, maxItems) {
     const used = rows.slice(0, maxItems); const out = []; let last = null;
     used.forEach((r) => {
       const key = (r.c1name || '') + '||' + (r.c2name || '');
       if (key !== last) { out.push(''); out.push('## ' + [r.c1name, r.c2name].filter(Boolean).join(' / ')); last = key; }
-      const parts = [clean(r.zh), clean(r.pin), clean(r.ar)]; if (clean(r.en)) parts.push(clean(r.en));
-      out.push('- ' + parts.filter((x) => x !== '').join(' | '));
+      out.push('- ' + cols.map((k) => clean(r[k]) || '—').join(' | '));
     });
     return { text: out.join('\n').trim(), used: used.length, skipped: rows.length - used.length };
   }
 
   AIQ.buildPrompt = (rows, opts) => {
-    const o = Object.assign({}, DEFAULTS, opts || {});
-    const count = Math.max(1, Math.min(100, parseInt(o.count, 10) || DEFAULTS.count));
-    const types = TYPES.filter((t) => (o.types || []).indexOf(t.id) >= 0);
-    const typeLines = (types.length ? types : TYPES.filter((t) => t.id === 'mcq')).map((t, i) => (i + 1) + '. ' + t.line);
-    const blk = itemsBlock(rows || [], o.maxItems);
+    rows = rows || []; const o = AIQ.normOpts(opts);
+    const cols = LKEYS.filter((k) => o.q.indexOf(k) >= 0 || k === o.a);
+    const blk = itemsBlock(rows, cols, o.maxItems);
     const ans = o.answers === 'each' ? 'اعرض الإجابة الصحيحة وشرحًا قصيرًا بعد كل سؤال مباشرة.'
       : o.answers === 'none' ? 'لا تعرض الإجابات الآن؛ سأرسل إجاباتي لتصحّحها لي بعد ذلك.'
         : 'ضع كل الأسئلة أولًا، ثم قسم «الإجابات والشرح» في النهاية.';
@@ -3836,19 +3859,22 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       'أنت مدرّس لغة صينية للناطقين بالعربية. أريد أن تُعدّ لي اختبارًا من البيانات أدناه فقط (لا تضف كلمات من خارجها).',
       '',
       'المطلوب:',
-      '- عدد الأسئلة: ' + count + (count > 3 ? '، موزّعة بالتساوي على الدروس المذكورة.' : '.'),
+      '- لغة السؤال: ' + names(o.q) + '.',
+      '- لغة الإجابة: ' + LANG[o.a] + '.',
+      '- عدد الأسئلة: ' + o.count + (o.count > 3 ? '، موزّعة بالتساوي على الدروس المذكورة.' : '.'),
       '- أنواع الأسئلة (وزّعها على هذه الأنواع):',
-      ...typeLines.map((l) => '  ' + l),
-      '- اكتب الأسئلة والتعليمات بالعربية، وأضف البينيين مع كل نص صيني.',
+      ...o.types.map((id) => '  - ' + typeLine(id, o.q, o.a)),
+      '- اكتب التعليمات بالعربية، ولا تغيّر نص البيانات.',
       '- ' + ans,
       '- في النهاية اذكر الكلمات التي يُحتمل أن أخطئ فيها وراجعها معي.',
       '',
-      'البيانات (' + blk.used + ' عنصرًا' + (blk.skipped ? '، وتم اقتصار الاختبار على أول ' + blk.used + ' من ' + rows.length : '') + ') بصيغة: صيني | بينيين | عربي | إنجليزي',
+      'البيانات (' + blk.used + ' عنصرًا' + (blk.skipped ? '، وتم اقتصار الاختبار على أول ' + blk.used + ' من ' + rows.length : '') + ') بصيغة: ' + cols.map((k) => SHORT[k]).join(' | '),
       blk.text,
     ].join('\n');
   };
-  AIQ.loadOpts = () => { try { return Object.assign({}, DEFAULTS, MC.store.get('mc.aiq.v1', {}) || {}); } catch (e) { return Object.assign({}, DEFAULTS); } };
-  AIQ.saveOpts = (o) => { try { MC.store.set('mc.aiq.v1', { count: o.count, types: o.types, answers: o.answers }); } catch (e) { /* storage unavailable */ } };
+
+  AIQ.loadOpts = () => { try { return AIQ.normOpts(MC.store.get('mc.aiq.v1', {}) || {}); } catch (e) { return AIQ.normOpts({}); } };
+  AIQ.saveOpts = (o) => { try { MC.store.set('mc.aiq.v1', { q: o.q, a: o.a, types: o.types, count: o.count, answers: o.answers }); } catch (e) { /* storage unavailable */ } };
 
   const SITES = [
     { name: 'ChatGPT', url: 'https://chatgpt.com/' },
@@ -3860,34 +3886,36 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   AIQ.open = (rows, ui) => {
     const h = MC.h;
     if (!rows || !rows.length) return MC.toast('لا توجد عناصر لإعداد الاختبار', 'err');
-    const o = AIQ.loadOpts(); const title = (ui && ui.title) || '';
+    let o = AIQ.loadOpts(); const title = (ui && ui.title) || '';
+    const labelOf = (k) => (MC.LANGS.find((l) => l.key === k) || { label: k }).label;
     const ta = h('textarea', { class: 'inp', rows: 12, readonly: 'readonly', dir: 'auto', style: { width: '100%', fontSize: '12.5px', fontFamily: 'inherit' } });
     const note = h('div', { class: 'hint' });
-    const count = h('select', { class: 'sel', 'aria-label': 'عدد الأسئلة' }, ...AIQ.COUNTS.map((n) => h('option', { value: n, text: AIQ.countLabel(n) })));
-    count.value = String(o.count);
-    const answers = h('select', { class: 'sel', 'aria-label': 'عرض الإجابات' },
-      h('option', { value: 'end', text: 'الإجابات في النهاية' }), h('option', { value: 'each', text: 'الإجابة بعد كل سؤال' }), h('option', { value: 'none', text: 'أرسل إجاباتي لتصحّحها لي' }));
-    answers.value = o.answers;
-    const boxes = TYPES.map((t) => { const i = h('input', { type: 'checkbox' }); i.checked = o.types.indexOf(t.id) >= 0; return { t, i }; });
-    const cur = () => ({ count: +count.value, answers: answers.value, types: boxes.filter((b) => b.i.checked).map((b) => b.t.id) });
-    const refresh = () => {
-      const v = cur(); AIQ.saveOpts(v); const txt = AIQ.buildPrompt(rows, v); ta.value = txt;
+    const opts = h('div'); const copyBtns = h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap', marginTop: '8px' } });
+    const chip = (label, on, onclick) => h('button', { class: 'chip qz-chip' + (on ? ' on' : ''), type: 'button', onclick }, label);
+    const sec = (t, ...kids) => h('div', { class: 'fld' }, h('label', { text: t }), ...kids);
+    const set = (patch) => { o = AIQ.normOpts(Object.assign({}, o, patch)); AIQ.saveOpts(o); render(); };
+    const copy = async () => { try { await navigator.clipboard.writeText(ta.value); MC.toast('تم نسخ نص الاختبار — الصقه في المساعد', 'ok'); return true; } catch (e) { ta.removeAttribute('readonly'); ta.select(); try { document.execCommand('copy'); MC.toast('تم النسخ', 'ok'); ta.setAttribute('readonly', 'readonly'); return true; } catch (e2) { MC.toast('انسخ النص يدويًا من المربع', 'err'); return false; } } };
+    function render() {
+      opts.innerHTML = '';
+      opts.append(
+        sec('❓ لغة السؤال (يمكن اختيار أكثر من لغة)', h('div', { class: 'qz-chips' }, ...LKEYS.map((k) => chip(labelOf(k), o.q.indexOf(k) >= 0, () => set({ q: o.q.indexOf(k) >= 0 ? o.q.filter((x) => x !== k) : o.q.concat([k]) }))))),
+        sec('✍️ لغة الإجابة', h('div', { class: 'qz-chips' }, ...LKEYS.map((k) => chip((o.a === k ? '◉ ' : '○ ') + labelOf(k), o.a === k, () => set({ a: k }))))),
+        sec('🧩 أنواع الأسئلة', h('div', { class: 'qz-chips' }, ...TYPES.map((t) => chip((o.types.indexOf(t.id) >= 0 ? '☑ ' : '☐ ') + t.label, o.types.indexOf(t.id) >= 0, () => set({ types: o.types.indexOf(t.id) >= 0 ? o.types.filter((x) => x !== t.id) : o.types.concat([t.id]) }))))),
+        sec('🔢 عدد الأسئلة', h('div', { class: 'qz-chips' }, ...AIQ.COUNTS.map((n) => chip(String(n), o.count === n, () => set({ count: n }))))),
+        sec('✅ الإجابات', h('div', { class: 'qz-chips' }, ...[['end', 'في النهاية'], ['each', 'بعد كل سؤال'], ['none', 'أرسل إجاباتي لتصحّحها']].map((p) => chip(p[1], o.answers === p[0], () => set({ answers: p[0] }))))));
+      const txt = AIQ.buildPrompt(rows, o); ta.value = txt;
       const over = rows.length - Math.min(rows.length, DEFAULTS.maxItems);
       note.textContent = rows.length + ' عنصرًا' + (over > 0 ? ' (سيُقتصر على أول ' + DEFAULTS.maxItems + ')' : '') + ' · طول النص ' + txt.length + ' حرفًا';
-    };
-    const copy = async () => { try { await navigator.clipboard.writeText(ta.value); MC.toast('تم نسخ نص الاختبار — الصقه في المساعد', 'ok'); return true; } catch (e) { ta.removeAttribute('readonly'); ta.select(); try { document.execCommand('copy'); MC.toast('تم النسخ', 'ok'); ta.setAttribute('readonly', 'readonly'); return true; } catch (e2) { MC.toast('انسخ النص يدويًا من المربع', 'err'); return false; } } };
-    [count, answers].forEach((e) => e.addEventListener('change', refresh)); boxes.forEach((b) => b.i.addEventListener('change', refresh));
+    }
+    copyBtns.append(
+      h('button', { class: 'btn pri', type: 'button', onclick: copy }, MC.ico('dup'), h('span', { text: 'نسخ' })),
+      ...SITES.map((s) => h('button', { class: 'btn', type: 'button', title: 'ينسخ النص ثم يفتح ' + s.name + ' في تبويب جديد', onclick: async () => { if (await copy()) g.open(s.url, '_blank', 'noopener'); } }, h('span', { text: 'نسخ وفتح ' + s.name }))));
     const body = h('div', null,
-      title ? h('p', { class: 'hint', text: 'المصدر: ' + title }) : null,
-      h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, h('div', { class: 'fld' }, h('label', { text: 'عدد الأسئلة' }), count), h('div', { class: 'fld' }, h('label', { text: 'الإجابات' }), answers)),
-      h('div', { class: 'fld' }, h('label', { text: 'أنواع الأسئلة' }), h('div', { style: { display: 'grid', gap: '6px' } }, ...boxes.map((b) => h('label', { class: 'chk' }, b.i, h('span', { text: b.t.label }))))),
-      h('div', { class: 'fld' }, h('label', { text: 'النص الجاهز' }), ta), note,
-      h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap', marginTop: '8px' } },
-        h('button', { class: 'btn pri', type: 'button', onclick: copy }, MC.ico('dup'), h('span', { text: 'نسخ' })),
-        ...SITES.map((s) => h('button', { class: 'btn', type: 'button', title: 'ينسخ النص ثم يفتح ' + s.name + ' في تبويب جديد', onclick: async () => { if (await copy()) g.open(s.url, '_blank', 'noopener'); } }, h('span', { text: 'نسخ وفتح ' + s.name })))),
-      h('p', { class: 'hint', style: { marginTop: '10px' }, text: 'التطبيق لا يرسل شيئًا: النص يُنسخ فقط، وأنت تلصقه في المساعد الذي تختاره. لا ترسل رابط ملف البيانات لأنه خاص.' }));
+      title ? h('p', { class: 'hint', text: 'المصدر: ' + title }) : null, opts,
+      h('div', { class: 'fld' }, h('label', { text: 'النص الجاهز' }), ta), note, copyBtns,
+      h('p', { class: 'hint', style: { marginTop: '10px' }, text: 'التطبيق لا يرسل شيئًا: النص يُنسخ فقط، وأنت تلصقه في المساعد الذي تختاره. لا ترسل رابط ملف البيانات لأنه خاص. آخر اختياراتك محفوظة في هذا المتصفح.' }));
     MC.modal.open({ title: 'اختبار بالذكاء الاصطناعي', body, footer: [{ label: 'إغلاق', onClick: (c) => c() }], width: '680px' });
-    refresh();
+    render();
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -5264,7 +5292,9 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       h('button', { class: 'btn', onclick: () => { S.sel.clear(); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('x'), 'إلغاء'));
   }
 
-  function render() { compute(); renderChips(); renderFilters(); renderInfo(); renderList(); renderSelbar(); }
+  // the chosen main / sub groups are remembered in this browser (the data group chip is kept in the settings)
+  const saveNav = () => { MC.store.set('mc.nav.v1', { c1: S.c1 || '', c2: S.c2.slice() }); };
+  function render() { compute(); renderChips(); renderFilters(); saveNav(); renderInfo(); renderList(); renderSelbar(); }
   UI.render = render;
 
   /* ---------- boot ---------- */
@@ -5276,6 +5306,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   UI.start = () => {
     MC.load(); MC.applyFontVars();
     S.group = MC.settings.group || 'all'; if (S.group !== 'all' && !MC.getGroup(S.group)) S.group = 'all';
+    const nav = MC.store.get('mc.nav.v1', {}) || {}; S.c1 = nav.c1 ? String(nav.c1) : ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : [];   // renderFilters drops anything that no longer exists
     buildShell(); renderBanner(); render();
     MC.on('data', () => { const ids = new Set(MC.data.items.map((i) => i.id)); S.sel.forEach((id) => { if (!ids.has(id)) S.sel.delete(id); }); renderBanner(); render(); });
     MC.on('settings', (p) => { if (/^(hidden|view|grouped|showSort)/.test(p)) render(); });

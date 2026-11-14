@@ -1117,6 +1117,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     print: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
     quiz: '<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>',
     stats: '<path d="M18 20V10M12 20V4M6 20v-6"/>',
+    sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
     settings: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
     data: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
@@ -3774,6 +3775,112 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);
 
+/* ===== aiquiz.js ===== */
+/* ============================================================
+   aiquiz.js — "اختبار بالذكاء الاصطناعي": builds a ready-to-paste prompt from the shown/selected items,
+   so any AI assistant (ChatGPT, Claude, Gemini…) can write an exam on exactly those lessons.
+   Nothing is sent anywhere by the app: the user copies the text and pastes it in the assistant of their choice.
+   Depends on core.js (MC.store) and, at call time only, on dom.js (MC.h, MC.modal, MC.toast).
+   Pure, tested part: MC.AIQ.buildPrompt(rows, opts)
+   ============================================================ */
+(function (g) {
+  'use strict';
+  const MC = g.MC = g.MC || {};
+  const AIQ = MC.AIQ = {};
+
+  const TYPES = [
+    { id: 'mcq', label: 'اختيار من متعدد (4 خيارات)', line: 'اختيار من متعدد بأربعة خيارات، وتكون الخيارات الخاطئة قريبة من الصحيحة في المعنى أو الشكل (من نفس الدروس) لا عشوائية.' },
+    { id: 'fill', label: 'إكمال الفراغ في الجملة', line: 'إكمال الفراغ: جملة صينية حُذفت منها كلمة واحدة مع إعطاء المعنى العربي، والمطلوب كتابة الكلمة الناقصة.' },
+    { id: 'ar2zh', label: 'ترجمة من العربية إلى الصينية', line: 'ترجمة من العربية إلى الصينية.' },
+    { id: 'zh2ar', label: 'ترجمة من الصينية إلى العربية', line: 'ترجمة من الصينية إلى العربية.' },
+    { id: 'pin', label: 'كتابة البينيين لكلمة صينية', line: 'كتابة النطق (البينيين) لكلمة أو جملة صينية.' },
+    { id: 'tf', label: 'صح أو خطأ (ترجمة معروضة)', line: 'صح أو خطأ: تُعرض كلمة صينية مع ترجمة، والمطلوب الحكم على صحة الترجمة (اجعل نصف الأسئلة خاطئة).' },
+  ];
+  const DEFAULTS = { count: 15, types: ['mcq', 'fill', 'ar2zh'], answers: 'end', maxItems: 300 };
+  AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS;
+
+  const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+
+  // Items grouped by lesson (main group / sub group), one compact line each: «zh | pinyin | ar | en»
+  function itemsBlock(rows, maxItems) {
+    const used = rows.slice(0, maxItems); const out = []; let last = null;
+    used.forEach((r) => {
+      const key = (r.c1name || '') + '||' + (r.c2name || '');
+      if (key !== last) { out.push(''); out.push('## ' + [r.c1name, r.c2name].filter(Boolean).join(' / ')); last = key; }
+      const parts = [clean(r.zh), clean(r.pin), clean(r.ar)]; if (clean(r.en)) parts.push(clean(r.en));
+      out.push('- ' + parts.filter((x) => x !== '').join(' | '));
+    });
+    return { text: out.join('\n').trim(), used: used.length, skipped: rows.length - used.length };
+  }
+
+  AIQ.buildPrompt = (rows, opts) => {
+    const o = Object.assign({}, DEFAULTS, opts || {});
+    const count = Math.max(1, Math.min(100, parseInt(o.count, 10) || DEFAULTS.count));
+    const types = TYPES.filter((t) => (o.types || []).indexOf(t.id) >= 0);
+    const typeLines = (types.length ? types : TYPES.filter((t) => t.id === 'mcq')).map((t, i) => (i + 1) + '. ' + t.line);
+    const blk = itemsBlock(rows || [], o.maxItems);
+    const ans = o.answers === 'each' ? 'اعرض الإجابة الصحيحة وشرحًا قصيرًا بعد كل سؤال مباشرة.'
+      : o.answers === 'none' ? 'لا تعرض الإجابات الآن؛ سأرسل إجاباتي لتصحّحها لي بعد ذلك.'
+        : 'ضع كل الأسئلة أولًا، ثم قسم «الإجابات والشرح» في النهاية.';
+    return [
+      'أنت مدرّس لغة صينية للناطقين بالعربية. أريد أن تُعدّ لي اختبارًا من البيانات أدناه فقط (لا تضف كلمات من خارجها).',
+      '',
+      'المطلوب:',
+      '- عدد الأسئلة: ' + count + '، موزّعة بالتساوي على الدروس المذكورة.',
+      '- أنواع الأسئلة (وزّعها على هذه الأنواع):',
+      ...typeLines.map((l) => '  ' + l),
+      '- اكتب الأسئلة والتعليمات بالعربية، وأضف البينيين مع كل نص صيني.',
+      '- ' + ans,
+      '- في النهاية اذكر الكلمات التي يُحتمل أن أخطئ فيها وراجعها معي.',
+      '',
+      'البيانات (' + blk.used + ' عنصرًا' + (blk.skipped ? '، وتم اقتصار الاختبار على أول ' + blk.used + ' من ' + rows.length : '') + ') بصيغة: صيني | بينيين | عربي | إنجليزي',
+      blk.text,
+    ].join('\n');
+  };
+  AIQ.loadOpts = () => { try { return Object.assign({}, DEFAULTS, MC.store.get('mc.aiq.v1', {}) || {}); } catch (e) { return Object.assign({}, DEFAULTS); } };
+  AIQ.saveOpts = (o) => { try { MC.store.set('mc.aiq.v1', { count: o.count, types: o.types, answers: o.answers }); } catch (e) { /* storage unavailable */ } };
+
+  const SITES = [
+    { name: 'ChatGPT', url: 'https://chatgpt.com/' },
+    { name: 'Claude', url: 'https://claude.ai/new' },
+    { name: 'Gemini', url: 'https://gemini.google.com/app' },
+  ];
+
+  // UI (browser only)
+  AIQ.open = (rows, ui) => {
+    const h = MC.h;
+    if (!rows || !rows.length) return MC.toast('لا توجد عناصر لإعداد الاختبار', 'err');
+    const o = AIQ.loadOpts(); const title = (ui && ui.title) || '';
+    const ta = h('textarea', { class: 'inp', rows: 12, readonly: 'readonly', dir: 'auto', style: { width: '100%', fontSize: '12.5px', fontFamily: 'inherit' } });
+    const note = h('div', { class: 'hint' });
+    const count = h('select', { class: 'sel', 'aria-label': 'عدد الأسئلة' }, ...[10, 15, 20, 30, 50].map((n) => h('option', { value: n, text: n + ' سؤالًا' })));
+    count.value = String(o.count);
+    const answers = h('select', { class: 'sel', 'aria-label': 'عرض الإجابات' },
+      h('option', { value: 'end', text: 'الإجابات في النهاية' }), h('option', { value: 'each', text: 'الإجابة بعد كل سؤال' }), h('option', { value: 'none', text: 'أرسل إجاباتي لتصحّحها لي' }));
+    answers.value = o.answers;
+    const boxes = TYPES.map((t) => { const i = h('input', { type: 'checkbox' }); i.checked = o.types.indexOf(t.id) >= 0; return { t, i }; });
+    const cur = () => ({ count: +count.value, answers: answers.value, types: boxes.filter((b) => b.i.checked).map((b) => b.t.id) });
+    const refresh = () => {
+      const v = cur(); AIQ.saveOpts(v); const txt = AIQ.buildPrompt(rows, v); ta.value = txt;
+      const over = rows.length - Math.min(rows.length, DEFAULTS.maxItems);
+      note.textContent = rows.length + ' عنصرًا' + (over > 0 ? ' (سيُقتصر على أول ' + DEFAULTS.maxItems + ')' : '') + ' · طول النص ' + txt.length + ' حرفًا';
+    };
+    const copy = async () => { try { await navigator.clipboard.writeText(ta.value); MC.toast('تم نسخ نص الاختبار — الصقه في المساعد', 'ok'); return true; } catch (e) { ta.removeAttribute('readonly'); ta.select(); try { document.execCommand('copy'); MC.toast('تم النسخ', 'ok'); ta.setAttribute('readonly', 'readonly'); return true; } catch (e2) { MC.toast('انسخ النص يدويًا من المربع', 'err'); return false; } } };
+    [count, answers].forEach((e) => e.addEventListener('change', refresh)); boxes.forEach((b) => b.i.addEventListener('change', refresh));
+    const body = h('div', null,
+      title ? h('p', { class: 'hint', text: 'المصدر: ' + title }) : null,
+      h('div', { class: 'row', style: { gap: '8px', flexWrap: 'wrap' } }, h('div', { class: 'fld' }, h('label', { text: 'عدد الأسئلة' }), count), h('div', { class: 'fld' }, h('label', { text: 'الإجابات' }), answers)),
+      h('div', { class: 'fld' }, h('label', { text: 'أنواع الأسئلة' }), h('div', { style: { display: 'grid', gap: '6px' } }, ...boxes.map((b) => h('label', { class: 'chk' }, b.i, h('span', { text: b.t.label }))))),
+      h('div', { class: 'fld' }, h('label', { text: 'النص الجاهز' }), ta), note,
+      h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap', marginTop: '8px' } },
+        h('button', { class: 'btn pri', type: 'button', onclick: copy }, MC.ico('dup'), h('span', { text: 'نسخ' })),
+        ...SITES.map((s) => h('button', { class: 'btn', type: 'button', title: 'ينسخ النص ثم يفتح ' + s.name + ' في تبويب جديد', onclick: async () => { if (await copy()) g.open(s.url, '_blank', 'noopener'); } }, h('span', { text: 'نسخ وفتح ' + s.name })))),
+      h('p', { class: 'hint', style: { marginTop: '10px' }, text: 'التطبيق لا يرسل شيئًا: النص يُنسخ فقط، وأنت تلصقه في المساعد الذي تختاره. لا ترسل رابط ملف البيانات لأنه خاص.' }));
+    MC.modal.open({ title: 'اختبار بالذكاء الاصطناعي', body, footer: [{ label: 'إغلاق', onClick: (c) => c() }], width: '680px' });
+    refresh();
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /* ===== bulk.js ===== */
 /* ============================================================
    bulk.js — MC.Bulk: bulk entry screen (paste rows copied from Excel).
@@ -4865,6 +4972,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const bulkBtn = btn('bulk', 'إدخال دفعة', () => need('Bulk', 'open') && MC.Bulk.open({ group: S.group !== 'all' ? S.group : null, c1: S.c1 || null, c2: S.c2 || null }));
     const printBtn = btn('print', 'طباعة', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للطباعة', 'err'); need('Print', 'open') && MC.Print.open(r, { title: UI.scopeTitle() }); });
     const quizBtn = btn('quiz', 'اختبار', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('Quiz', 'open') && MC.Quiz.open(r, { title: UI.scopeTitle() }); });
+    const aiBtn = btn('sparkle', 'اختبار AI', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('AIQ', 'open') && MC.AIQ.open(r, { title: UI.scopeTitle() }); }, '', 'اختبار بالذكاء الاصطناعي: نسخ نص جاهز لأي مساعد');
     const statsBtn = btn('stats', 'الدرجات', () => need('Quiz', 'openStats') && MC.Quiz.openStats());
     const setBtn = btn('settings', 'الإعدادات', () => UI.openSettings());
     const dataBtn = btn('data', 'البيانات', () => UI.openData());
@@ -4890,7 +4998,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     //  1) logo + title | source tabs   2) add | print | quiz | settings + data   3) search | group lists | view buttons
     const top = h('header', { class: 'ui-top' },
       h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), cluster('ui-c-tabs', el.chips)),
-      h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, statsBtn), sepEl(), cluster('', setBtn, dataBtn)),
+      h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, dataBtn)),
       h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear)), sepEl(), cluster('ui-c-class', lsel('المجموعة الرئيسية', el.c1), lsel('المجموعة الفرعية', el.c2)), sepEl(), cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });
@@ -5119,6 +5227,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       h('button', { class: 'btn', title: showMode ? 'إظهار المحدد' : 'إخفاء المحدد', onclick: () => { const ids = Array.from(S.sel); S.sel.clear(); MC.setHidden(ids, !showMode); MC.toast((showMode ? 'أُعيد عرض ' : 'أُخفي ') + ids.length + ' عنصرًا', 'ok'); } }, MC.ico(showMode ? 'show' : 'hide'), showMode ? 'إظهار' : 'إخفاء'),
       h('button', { class: 'btn', title: 'طباعة المحدد', onclick: () => { need('Print', 'open') && MC.Print.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('print')),
       h('button', { class: 'btn', title: 'اختبار على المحدد', onclick: () => { need('Quiz', 'open') && MC.Quiz.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('quiz')),
+      h('button', { class: 'btn', title: 'اختبار بالذكاء الاصطناعي على المحدد', onclick: () => { need('AIQ', 'open') && MC.AIQ.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('sparkle')),
       h('button', { class: 'btn dng', onclick: deleteSelected }, MC.ico('del'), 'حذف'),
       h('button', { class: 'btn', onclick: () => { S.sel.clear(); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('x'), 'إلغاء'));
   }

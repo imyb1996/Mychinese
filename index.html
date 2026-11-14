@@ -57,7 +57,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ic-speak { color: #16a34a; } .ic-hide { color: #d97706; } .ic-show { color: #0891b2; } .ic-up, .ic-down { color: #64748b; } .ic-cloud { color: #0ea5e9; }
 .ic-layers { color: #6d4ad8; } .ic-link { color: #2563eb; } .ic-search { color: #64748b; } .ic-repeat { color: #7c3aed; } .ic-folder { color: #ca8a04; }
 .ic-file { color: #16a34a; } .ic-download { color: #0f766e; } .ic-upload { color: #0369a1; } .ic-refresh { color: #2563eb; } .ic-check { color: #16a34a; } .ic-clean { color: #475569; } .ic-warn { color: #d97706; } .ic-lock { color: #d97706; } .ic-x { color: #64748b; }
-.btn.pri .ic, .btn.dng .ic, .btn.gn .ic, .chip.on .ic, .seg button.on .ic, .ui-selbar .ic { color: #fff; }
+.btn.pri .ic, .btn.dng .ic, .btn.gn .ic, .chip.on .ic, .seg button.on .ic { color: #fff; }
 :root[data-theme="dark"] .ic { filter: brightness(1.35); }
 
 /* buttons */
@@ -151,9 +151,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-banner { background: var(--yl); border: 1px solid #f1d98b; color: #78350f; padding: 8px 12px; border-radius: var(--r); margin: 6px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 
 /* ---- selection bar ---- */
-.ui-selbar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 60; background: var(--tx); color: var(--bg); padding: 8px 12px; border-radius: 14px; display: flex; gap: 6px; align-items: center; box-shadow: var(--shl); flex-wrap: wrap; justify-content: center; max-width: 96vw; }
-.ui-selbar .btn { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .25); color: inherit; min-height: 32px; font-size: 13px; }
-.ui-selbar .btn:hover { background: rgba(255, 255, 255, .24); } .ui-selbar .btn.dng { background: var(--acc); }
+.ui-selbar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 60; background: var(--card); color: var(--tx); border: 1px solid var(--bd); padding: 9px 12px; border-radius: 14px; display: flex; flex-direction: column; gap: 7px; align-items: stretch; box-shadow: var(--shl); width: max-content; max-width: 96vw; }
+.ui-selbar .sb-row { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.ui-selbar .sb-pair { display: inline-flex; gap: 0; } .ui-selbar .sb-pair .btn { border-radius: 0; margin: 0; } .ui-selbar .sb-pair .btn:first-child { border-start-start-radius: var(--r); border-end-start-radius: var(--r); } .ui-selbar .sb-pair .btn:last-child { border-start-end-radius: var(--r); border-end-end-radius: var(--r); margin-inline-start: -1px; }
+.ui-selbar .btn { background: var(--sf); border-color: var(--bd); color: var(--tx); min-height: 34px; font-size: 13px; } .ui-selbar .btn .ic { color: var(--tx); }
+.ui-selbar .btn:hover { background: var(--hov); } .ui-selbar .btn.dng { background: var(--acc); color: #fff; border-color: transparent; } .ui-selbar .btn.dng .ic { color: #fff; }
 .ui-selbar b { padding: 0 6px; }
 
 /* ---- list ---- */
@@ -352,6 +354,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.sc-up, .btn.sc-dn { font-weight: 800; font-family: var(--fm); min-width: 44px; justify-content: center; }
 .btn.sc-up { color: #188038; border-color: #188038; } .btn.sc-dn { color: #c5221f; border-color: #c5221f; }
 .btn.sc-up:hover { background: rgba(24,128,56,.12); } .btn.sc-dn:hover { background: rgba(197,34,31,.12); }
+@media (max-width: 640px) { .ui-selbar { padding: 7px 8px; gap: 5px; } .ui-selbar .sb-row { gap: 4px; } .ui-selbar .btn { padding: 3px 8px; min-height: 30px; font-size: 12px; gap: 4px; } }
 
 /* ===== quiz.css ===== */
 /* ============================================================
@@ -5288,21 +5291,33 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     MC.Scores.applyDeltas(ids.map((id) => [id, d, 0]));
     MC.toast((d > 0 ? 'أُضيفت درجة (+1) إلى ' : 'نُقصت درجة (−1) من ') + ids.length + ' عنصرًا', 'ok');
   }
+  // wipes the saved score (and attempts) of the selected items, after a confirmation
+  async function clearSelectedScores() {
+    if (!MC.Scores || !MC.Scores.clear) return MC.toast('وحدة الدرجات غير متاحة', 'err');
+    const ids = Array.from(S.sel); if (!ids.length) return;
+    const withScore = ids.filter((id) => MC.Scores.info(id)).length;
+    if (!withScore) return MC.toast('لا توجد درجات محفوظة للعناصر المحددة', 'err');
+    if (!(await MC.confirm('مسح درجات ' + withScore + ' عنصرًا من أصل ' + ids.length + ' محددًا؟\nستعود هذه العناصر «غير مختبرة»، ولا يمكن التراجع عن ذلك.', { danger: true, okLabel: 'مسح الدرجات' }))) return;
+    MC.Scores.clear(ids);
+    MC.toast('تم مسح درجات ' + withScore + ' عنصرًا', 'ok');
+  }
   function renderSelbar() {
     const n = S.sel.size; el.selbar.hidden = !n; if (!n) return;
     el.selbar.innerHTML = '';
     const showMode = S.hiddenMode === 'only';
-    el.selbar.append(h('b', { text: 'محدد: ' + n }),
-      h('button', { class: 'btn', onclick: () => { S.views.forEach((v) => S.sel.add(v.id)); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('check'), 'تحديد الظاهر (' + S.views.length + ')'),
-      h('button', { class: 'btn', onclick: () => UI.openMoveDialog(Array.from(S.sel)) }, MC.ico('folder'), 'نقل إلى مجموعة'),
-      h('button', { class: 'btn', title: showMode ? 'إظهار المحدد' : 'إخفاء المحدد', onclick: () => { const ids = Array.from(S.sel); S.sel.clear(); MC.setHidden(ids, !showMode); MC.toast((showMode ? 'أُعيد عرض ' : 'أُخفي ') + ids.length + ' عنصرًا', 'ok'); } }, MC.ico(showMode ? 'show' : 'hide'), showMode ? 'إظهار' : 'إخفاء'),
-      h('button', { class: 'btn', title: 'طباعة المحدد', onclick: () => { need('Print', 'open') && MC.Print.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('print')),
-      h('button', { class: 'btn', title: 'اختبار على المحدد', onclick: () => { need('Quiz', 'open') && MC.Quiz.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('quiz')),
-      h('button', { class: 'btn', title: 'اختبار بالذكاء الاصطناعي على المحدد', onclick: () => { need('AIQ', 'open') && MC.AIQ.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('sparkle')),
-      h('button', { class: 'btn sc-up', title: 'إضافة درجة (+1) لكل المحدد', onclick: () => bumpSelected(1) }, '+1'),
-      h('button', { class: 'btn sc-dn', title: 'إنقاص درجة (−1) من كل المحدد', onclick: () => bumpSelected(-1) }, '−1'),
-      h('button', { class: 'btn dng', onclick: deleteSelected }, MC.ico('del'), 'حذف'),
-      h('button', { class: 'btn', onclick: () => { S.sel.clear(); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('x'), 'إلغاء'));
+    el.selbar.append(
+      h('div', { class: 'sb-row' }, h('b', { text: 'محدد: ' + n }),
+        h('button', { class: 'btn', onclick: () => { S.views.forEach((v) => S.sel.add(v.id)); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('check'), 'تحديد الظاهر (' + S.views.length + ')'),
+        h('button', { class: 'btn', onclick: () => UI.openMoveDialog(Array.from(S.sel)) }, MC.ico('folder'), 'نقل إلى مجموعة'),
+        h('button', { class: 'btn', title: showMode ? 'إظهار المحدد' : 'إخفاء المحدد', onclick: () => { const ids = Array.from(S.sel); S.sel.clear(); MC.setHidden(ids, !showMode); MC.toast((showMode ? 'أُعيد عرض ' : 'أُخفي ') + ids.length + ' عنصرًا', 'ok'); } }, MC.ico(showMode ? 'show' : 'hide'), showMode ? 'إظهار' : 'إخفاء'),
+        h('button', { class: 'btn dng', onclick: deleteSelected }, MC.ico('del'), 'حذف'),
+        h('button', { class: 'btn', onclick: () => { S.sel.clear(); renderList(); renderSelbar(); renderInfo(); } }, MC.ico('x'), 'إلغاء')),
+      h('div', { class: 'sb-row' },
+        h('button', { class: 'btn', title: 'طباعة المحدد', onclick: () => { need('Print', 'open') && MC.Print.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('print'), 'طباعة'),
+        h('button', { class: 'btn', title: 'اختبار على المحدد', onclick: () => { need('Quiz', 'open') && MC.Quiz.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('quiz'), 'اختبار'),
+        h('button', { class: 'btn', title: 'اختبار بالذكاء الاصطناعي على المحدد', onclick: () => { need('AIQ', 'open') && MC.AIQ.open(UI.scopeRows(), { title: UI.scopeTitle() }); } }, MC.ico('sparkle'), 'اختبار AI'),
+        h('div', { class: 'sb-pair', role: 'group', 'aria-label': 'تعديل الدرجة' }, h('button', { class: 'btn sc-up', title: 'إضافة درجة (+1) لكل المحدد', onclick: () => bumpSelected(1) }, '+1'), h('button', { class: 'btn sc-dn', title: 'إنقاص درجة (−1) من كل المحدد', onclick: () => bumpSelected(-1) }, '−1')),
+        h('button', { class: 'btn', title: 'مسح درجات الكلمات المحددة', onclick: clearSelectedScores }, MC.ico('del'), 'مسح الدرجات')));
   }
 
   // the chosen main / sub groups are remembered in this browser (the data group chip is kept in the settings)

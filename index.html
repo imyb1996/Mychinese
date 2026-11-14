@@ -4771,14 +4771,15 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const say = (t, cls) => { status.textContent = t; status.className = 'ui-gate-status ' + (cls || ''); };
     const nameOk = () => nameInp.value.trim().length >= 2;
     const sync = () => {                                   // the button needs a name, and works only once
-      reqBtn.disabled = sent || busy || !S.hasScript() || !nameOk(); nameInp.readOnly = sent;
+      reqBtn.disabled = sent || busy || !nameOk(); nameInp.readOnly = sent;
       reqBtn.title = sent ? 'سبق إرسال طلب من هذا الجهاز' : (nameOk() ? '' : 'اكتب اسم الجهاز أولًا');
     };
     const SENT = 'تم إرسال طلب هذا الجهاز ولا يمكن إرسال طلب آخر. انتظر موافقة صاحب ملف البيانات لدخولك.';
+    const NOLINK = 'التطبيق غير مربوط بالخادم بعد، فلا يمكن إرسال الطلب الآن. تواصل مع صاحب التطبيق.';
     const markSent = (name) => { sent = true; if (name) nameInp.value = name; sync(); say(SENT, 'warn'); };
     async function check() {
       if (done || busy) return;
-      if (!S.hasScript()) { say('التطبيق غير مربوط بالخادم بعد. تواصل مع صاحب التطبيق.', 'bad'); return sync(); }
+      if (!S.hasScript()) { say(NOLINK, 'bad'); return sync(); }
       try {
         const st = await S.checkAccess();
         if (st === 'approved') { done = true; clearInterval(timer); MC.toast('تم السماح لهذا الجهاز ✔', 'ok'); resolve(); return; }
@@ -4787,6 +4788,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     }
     reqBtn.onclick = async () => {
       if (sent) return say(SENT, 'warn');
+      if (!S.hasScript()) return say(NOLINK, 'bad');
       if (!nameOk()) { say('اكتب اسم الجهاز أولًا (حرفان على الأقل).', 'bad'); return nameInp.focus(); }
       busy = true; sync();
       try {
@@ -4795,7 +4797,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         markSent(S.accessName);
       } catch (e) { busy = false; sync(); say(e.message, 'bad'); }
     };
-    nameInp.addEventListener('input', () => { sync(); if (nameOk() && status.className.indexOf('bad') >= 0) say(''); });
+    nameInp.addEventListener('input', () => { sync(); if (!S.hasScript()) say(NOLINK, 'bad'); else if (nameOk() && status.className.indexOf('bad') >= 0) say(''); });
     nameInp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !reqBtn.disabled) reqBtn.click(); });
     root.appendChild(h('div', { class: 'ui-gate' }, h('div', { class: 'ui-gate-box' },
       h('div', { class: 'ui-gate-ic', html: MC.icon('lock') }), h('h2', { text: 'هذا الجهاز غير مسجّل' }),

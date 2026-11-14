@@ -237,6 +237,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-lsel { display: flex; flex-direction: column; gap: 1px; min-width: 150px; }
 .ui-lsel > span { font-size: 11px; color: var(--dm); font-weight: 700; padding-inline-start: 4px; }
 .ui-lsel .sel { width: 100%; min-height: 34px; padding-block: 4px; }
+.ui-lsel.lvl { min-width: 112px; }
 .ui-ms { position: relative; } .ui-ms-btn { width: 100%; text-align: start; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-ms-pop { position: absolute; z-index: 60; top: calc(100% + 4px); inset-inline-start: 0; min-width: 100%; width: max-content; max-width: min(92vw, 360px); max-height: 52vh; overflow: auto; background: var(--sf); border: 1px solid var(--bd); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; }
 .ui-ms-pop[hidden] { display: none; } .ui-ms-head { display: flex; gap: 6px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
@@ -835,7 +836,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   MC.clearHidden = () => { hidden.clear(); saveHidden(); };
 
   /* Query items (returns views in display order).
-     f = { group:'code'|[codes], kind:'word'|'sentence', scope:'general'|'specialized', c1:n, c2:n|[n,…] (several sub-groups), q:'text', ids:[...], dupOnly:bool,
+     f = { group:'code'|[codes], kind:'word'|'sentence', scope:'general'|'specialized', c1:n, level:n, c2:n|[n,…] (several sub-groups), q:'text', ids:[...], dupOnly:bool,
            hidden:'exclude'|'only'|'all' }   hidden defaults to 'exclude' (items the user hid are not returned), or 'all' when `ids` is given. */
   MC.query = (f) => {
     f = f || {};
@@ -857,6 +858,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       if (f.kind && v.kind !== f.kind) continue;
       if (f.scope && v.scope !== f.scope) continue;
       if (f.c1 != null && f.c1 !== '' && v.c1 !== +f.c1) continue;
+      if (f.level != null && f.level !== '' && v.level !== +f.level) continue;
       out.push(v);
     }
     return out;
@@ -4983,7 +4985,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   'use strict';
   const MC = g.MC; const h = MC.h; const esc = MC.esc;
   const UI = (MC.UI = MC.UI || {});
-  const S = (UI.state = { group: 'all', c1: '', c2: [], q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
+  const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
   const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
   const el = {};
   const STEP = 150;
@@ -4995,6 +4997,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     if (S.c2.length === 1) { const k = MC.getClass2(S.c2[0]); return k ? k.name : ''; }
     if (S.c2.length > 1) { const nm = S.c2.map((id) => { const k = MC.getClass2(id); return k ? k.name : ''; }).filter(Boolean); return nm.length <= 3 ? nm.join(' + ') : nm.length + ' مجموعات فرعية'; }
     if (S.c1) { const k = MC.getClass1(S.c1); return k ? k.name : ''; }
+    if (S.level) return 'مستوى ' + S.level + (S.group !== 'all' ? ' — ' + ((MC.getGroup(S.group) || {}).label_ar || '') : '');
     if (S.group !== 'all') { const gr = MC.getGroup(S.group); return gr ? gr.label_ar : ''; }
     return 'كل العناصر';
   };
@@ -5023,6 +5026,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const setBtn = btn('settings', 'الإعدادات', () => UI.openSettings());
     const dataBtn = btn('data', 'البيانات', () => UI.openData());
     el.chips = h('nav', { class: 'ui-groups', 'aria-label': 'مصادر البيانات' });
+    el.lvl = h('select', { class: 'sel', 'aria-label': 'المستوى', onchange: (e) => { S.level = e.target.value; S.limit = STEP; render(); } });
     el.c1 = h('select', { class: 'sel', 'aria-label': 'المجموعة الرئيسية', onchange: (e) => { S.c1 = e.target.value; S.c2 = []; S.limit = STEP; render(); } });
     // sub-group filter: a drop-down with check boxes, so several sub-groups can be shown (and quizzed / printed) together
     el.c2btn = h('button', { class: 'sel ui-ms-btn', type: 'button', 'aria-haspopup': 'true', 'aria-label': 'المجموعة الفرعية', onclick: (e) => { e.stopPropagation(); el.c2pop.hidden = !el.c2pop.hidden; } });
@@ -5049,7 +5053,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const top = h('header', { class: 'ui-top' },
       h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), cluster('ui-c-tabs', el.chips)),
       h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, dataBtn)),
-      h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear)), sepEl(), cluster('ui-c-class', lsel('المجموعة الرئيسية', el.c1), lsel('المجموعة الفرعية', el.c2)), sepEl(), cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
+      h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear)), sepEl(), cluster('ui-c-class', (() => { const l = lsel('المستوى', el.lvl); l.classList.add('lvl'); return l; })(), lsel('المجموعة الرئيسية', el.c1), lsel('المجموعة الفرعية', el.c2)), sepEl(), cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });
     el.selbar = h('div', { class: 'ui-selbar', hidden: true });
@@ -5113,7 +5117,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
 
   /* ---------- rendering ---------- */
-  function compute() { S.views = MC.query({ group: S.group, c1: S.c1, c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode }); }
+  function compute() { S.views = MC.query({ group: S.group, level: S.level, c1: S.c1, c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode }); }
 
   function renderChips() {
     // counts follow the hidden filter: normal mode counts the visible items, "hidden" mode counts the hidden ones
@@ -5149,7 +5153,12 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     });
   }
   function renderFilters() {
-    const c1s = []; MC.groupsSorted().forEach((gr) => { if (S.group !== 'all' && gr.group !== S.group) return; MC.class1Of(gr.group).forEach((c) => c1s.push({ v: c.c1, t: (S.group === 'all' ? gr.label_ar + ' › ' : '') + pad2(c.sort) + '_' + c.name })); });
+    // levels that exist in the current data group; choosing one narrows the main-group list (and the shown items), choosing none leaves everything available
+    const lv = new Set(); MC.groupsSorted().forEach((gr) => { if (S.group !== 'all' && gr.group !== S.group) return; MC.class1Of(gr.group).forEach((c) => { if (c.level != null && c.level !== '' && Number.isFinite(+c.level)) lv.add(+c.level); }); });
+    const lvls = Array.from(lv).sort((a, b) => a - b).map((n) => ({ v: n, t: 'مستوى ' + n }));
+    if (S.level && !lvls.some((o) => String(o.v) === String(S.level))) S.level = '';
+    fillSelect(el.lvl, lvls, S.level, 'كل المستويات');
+    const c1s = []; MC.groupsSorted().forEach((gr) => { if (S.group !== 'all' && gr.group !== S.group) return; MC.class1Of(gr.group).forEach((c) => (S.level && String(c.level) !== String(S.level) ? 0 : c1s.push({ v: c.c1, t: (S.group === 'all' ? gr.label_ar + ' › ' : '') + pad2(c.sort) + '_' + c.name }))); });
     if (S.c1 && !c1s.some((o) => String(o.v) === String(S.c1))) { S.c1 = ''; S.c2 = []; }
     fillSelect(el.c1, c1s, S.c1, 'كل المجموعات الرئيسية');
     const c2s = S.c1 ? MC.class2Of(S.c1).map((c) => ({ v: c.c2, t: pad2(c.sort) + '_' + c.name })) : [];
@@ -5321,7 +5330,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
 
   // the chosen main / sub groups are remembered in this browser (the data group chip is kept in the settings)
-  const saveNav = () => { MC.store.set('mc.nav.v1', { c1: S.c1 || '', c2: S.c2.slice() }); };
+  const saveNav = () => { MC.store.set('mc.nav.v1', { level: S.level || '', c1: S.c1 || '', c2: S.c2.slice() }); };
   function render() { compute(); renderChips(); renderFilters(); saveNav(); renderInfo(); renderList(); renderSelbar(); }
   UI.render = render;
 
@@ -5334,7 +5343,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   UI.start = () => {
     MC.load(); MC.applyFontVars();
     S.group = MC.settings.group || 'all'; if (S.group !== 'all' && !MC.getGroup(S.group)) S.group = 'all';
-    const nav = MC.store.get('mc.nav.v1', {}) || {}; S.c1 = nav.c1 ? String(nav.c1) : ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : [];   // renderFilters drops anything that no longer exists
+    const nav = MC.store.get('mc.nav.v1', {}) || {}; S.level = nav.level ? String(nav.level) : ''; S.c1 = nav.c1 ? String(nav.c1) : ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : [];   // renderFilters drops anything that no longer exists
     buildShell(); renderBanner(); render();
     MC.on('data', () => { const ids = new Set(MC.data.items.map((i) => i.id)); S.sel.forEach((id) => { if (!ids.has(id)) S.sel.delete(id); }); renderBanner(); render(); });
     MC.on('settings', (p) => { if (/^(hidden|view|grouped|showSort)/.test(p)) render(); });

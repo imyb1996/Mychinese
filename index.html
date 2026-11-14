@@ -235,6 +235,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-lsel { display: flex; flex-direction: column; gap: 1px; min-width: 150px; }
 .ui-lsel > span { font-size: 11px; color: var(--dm); font-weight: 700; padding-inline-start: 4px; }
 .ui-lsel .sel { width: 100%; min-height: 34px; padding-block: 4px; }
+.ui-ms { position: relative; } .ui-ms-btn { width: 100%; text-align: start; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-ms-pop { position: absolute; z-index: 60; top: calc(100% + 4px); inset-inline-start: 0; min-width: 100%; width: max-content; max-width: min(92vw, 360px); max-height: 52vh; overflow: auto; background: var(--sf); border: 1px solid var(--bd); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; }
+.ui-ms-pop[hidden] { display: none; } .ui-ms-head { display: flex; gap: 6px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
+.ui-ms-it { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13.5px; } .ui-ms-it:hover { background: var(--bg2, rgba(0,0,0,.06)); } .ui-ms-it input { width: 17px; height: 17px; accent-color: var(--bl); flex: none; }
 .ui-search .inp { min-height: 40px; }
 .ui-search button { display: grid; place-items: center; }
 .ui-search button .ic { width: 16px; height: 16px; }
@@ -821,7 +825,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   MC.clearHidden = () => { hidden.clear(); saveHidden(); };
 
   /* Query items (returns views in display order).
-     f = { group:'code'|[codes], kind:'word'|'sentence', scope:'general'|'specialized', c1:n, c2:n, q:'text', ids:[...], dupOnly:bool,
+     f = { group:'code'|[codes], kind:'word'|'sentence', scope:'general'|'specialized', c1:n, c2:n|[n,…] (several sub-groups), q:'text', ids:[...], dupOnly:bool,
            hidden:'exclude'|'only'|'all' }   hidden defaults to 'exclude' (items the user hid are not returned), or 'all' when `ids` is given. */
   MC.query = (f) => {
     f = f || {};
@@ -829,12 +833,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const hm = f.hidden || (f.ids ? 'all' : 'exclude');
     const grp = f.group && f.group !== 'all' ? (Array.isArray(f.group) ? f.group : [f.group]) : null;
     const idSet = f.ids ? new Set(f.ids.map(Number)) : null;
+    const c2Set = Array.isArray(f.c2) ? (f.c2.length ? new Set(f.c2.map(Number)) : null) : null;
     const toks = f.q ? MC.norm(f.q).split(' ').filter(Boolean) : null;
     const out = [];
     for (const it of list) {
       if (idSet && !idSet.has(it.id)) continue;
       if (hm !== 'all') { const ih = hidden.has(it.id); if (hm === 'exclude' ? ih : !ih) continue; }
-      if (f.c2 != null && f.c2 !== '' && it.c2 !== +f.c2) continue;
+      if (c2Set) { if (!c2Set.has(it.c2)) continue; } else if (!Array.isArray(f.c2) && f.c2 != null && f.c2 !== '' && it.c2 !== +f.c2) continue;
       if (f.dupOnly && !ix().dup.has(it.id)) continue;
       if (toks) { const b = blobOf(it); let ok = true; for (const t of toks) { if (b.indexOf(t) < 0) { ok = false; break; } } if (!ok) continue; }
       const v = MC.view(it);
@@ -2938,7 +2943,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       const tChips = TYPES.map((t) => chip((cfg.types.indexOf(t) >= 0 ? '☑ ' : '☐ ') + TYPE_LABEL[t], cfg.types.indexOf(t) >= 0, () => {
         cfg.types = cfg.types.indexOf(t) >= 0 ? cfg.types.filter((x) => x !== t) : cfg.types.concat([t]); renderSetup();
       }));
-      const nChips = [10, 20, 50, 0].map((n) => chip(n === 0 ? 'الكل' : String(n), cfg.count === n, () => { cfg.count = n; renderSetup(); }));
+      const nChips = [2, 3, 5, 10, 20, 50, 0].map((n) => chip(n === 0 ? 'الكل' : String(n), cfg.count === n, () => { cfg.count = n; renderSetup(); }));
       const mChips = MODES.map((k) => chip(MODE_LABEL[k] + (k === 'untested' ? ' (' + untested + ')' : ''), cfg.mode === k, () => { cfg.mode = k; renderSetup(); }));
 
       body.appendChild(h('div', { class: 'qz-sum' }, h('b', { text: String(rows.length) }), ' عنصرًا مُحددًا',
@@ -3798,6 +3803,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   ];
   const DEFAULTS = { count: 15, types: ['mcq', 'fill', 'ar2zh'], answers: 'end', maxItems: 300 };
   AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS;
+  AIQ.COUNTS = [2, 3, 5, 10, 15, 20, 30, 50];
+  AIQ.countLabel = (n) => (n === 2 ? 'سؤالان' : n <= 10 ? n + ' أسئلة' : n + ' سؤالًا');
 
   const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
@@ -3826,7 +3833,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       'أنت مدرّس لغة صينية للناطقين بالعربية. أريد أن تُعدّ لي اختبارًا من البيانات أدناه فقط (لا تضف كلمات من خارجها).',
       '',
       'المطلوب:',
-      '- عدد الأسئلة: ' + count + '، موزّعة بالتساوي على الدروس المذكورة.',
+      '- عدد الأسئلة: ' + count + (count > 3 ? '، موزّعة بالتساوي على الدروس المذكورة.' : '.'),
       '- أنواع الأسئلة (وزّعها على هذه الأنواع):',
       ...typeLines.map((l) => '  ' + l),
       '- اكتب الأسئلة والتعليمات بالعربية، وأضف البينيين مع كل نص صيني.',
@@ -3853,7 +3860,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const o = AIQ.loadOpts(); const title = (ui && ui.title) || '';
     const ta = h('textarea', { class: 'inp', rows: 12, readonly: 'readonly', dir: 'auto', style: { width: '100%', fontSize: '12.5px', fontFamily: 'inherit' } });
     const note = h('div', { class: 'hint' });
-    const count = h('select', { class: 'sel', 'aria-label': 'عدد الأسئلة' }, ...[10, 15, 20, 30, 50].map((n) => h('option', { value: n, text: n + ' سؤالًا' })));
+    const count = h('select', { class: 'sel', 'aria-label': 'عدد الأسئلة' }, ...AIQ.COUNTS.map((n) => h('option', { value: n, text: AIQ.countLabel(n) })));
     count.value = String(o.count);
     const answers = h('select', { class: 'sel', 'aria-label': 'عرض الإجابات' },
       h('option', { value: 'end', text: 'الإجابات في النهاية' }), h('option', { value: 'each', text: 'الإجابة بعد كل سؤال' }), h('option', { value: 'none', text: 'أرسل إجاباتي لتصحّحها لي' }));
@@ -4938,7 +4945,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   'use strict';
   const MC = g.MC; const h = MC.h; const esc = MC.esc;
   const UI = (MC.UI = MC.UI || {});
-  const S = (UI.state = { group: 'all', c1: '', c2: '', q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
+  const S = (UI.state = { group: 'all', c1: '', c2: [], q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
   const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
   const el = {};
   const STEP = 150;
@@ -4947,7 +4954,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const groupColors = (code) => { const s = MC.groupStyle(code); return '--gc:' + s.color + ';--gs:' + s.soft; };
   const scoreClass = (s) => (s < 0 ? 'neg' : s >= 3 ? 'pos' : 'mid');
   UI.title = () => {
-    if (S.c2) { const k = MC.getClass2(S.c2); return k ? k.name : ''; }
+    if (S.c2.length === 1) { const k = MC.getClass2(S.c2[0]); return k ? k.name : ''; }
+    if (S.c2.length > 1) { const nm = S.c2.map((id) => { const k = MC.getClass2(id); return k ? k.name : ''; }).filter(Boolean); return nm.length <= 3 ? nm.join(' + ') : nm.length + ' مجموعات فرعية'; }
     if (S.c1) { const k = MC.getClass1(S.c1); return k ? k.name : ''; }
     if (S.group !== 'all') { const gr = MC.getGroup(S.group); return gr ? gr.label_ar : ''; }
     return 'كل العناصر';
@@ -4968,8 +4976,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const root = MC.$('#app'); root.innerHTML = '';
     el.search = h('input', { class: 'inp', type: 'search', placeholder: 'بحث: 中文 · pinyin · عربي · English  (اضغط / للتركيز)', autocomplete: 'off', oninput: MC.debounce((e) => { S.q = e.target.value; S.limit = STEP; render(); }, 140) });
     el.clear = h('button', { type: 'button', title: 'مسح', 'aria-label': 'مسح البحث', html: MC.icon('x'), onclick: () => { el.search.value = ''; S.q = ''; S.limit = STEP; render(); el.search.focus(); } });
-    const addBtn = btn('add', 'إضافة', () => UI.openItemDialog({ mode: 'add', c2: S.c2 || null, group: S.group }), 'pri');
-    const bulkBtn = btn('bulk', 'إدخال دفعة', () => need('Bulk', 'open') && MC.Bulk.open({ group: S.group !== 'all' ? S.group : null, c1: S.c1 || null, c2: S.c2 || null }));
+    const addBtn = btn('add', 'إضافة', () => UI.openItemDialog({ mode: 'add', c2: S.c2.length === 1 ? S.c2[0] : null, group: S.group }), 'pri');
+    const bulkBtn = btn('bulk', 'إدخال دفعة', () => need('Bulk', 'open') && MC.Bulk.open({ group: S.group !== 'all' ? S.group : null, c1: S.c1 || null, c2: S.c2.length === 1 ? S.c2[0] : null }));
     const printBtn = btn('print', 'طباعة', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للطباعة', 'err'); need('Print', 'open') && MC.Print.open(r, { title: UI.scopeTitle() }); });
     const quizBtn = btn('quiz', 'اختبار', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('Quiz', 'open') && MC.Quiz.open(r, { title: UI.scopeTitle() }); });
     const aiBtn = btn('sparkle', 'اختبار AI', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('AIQ', 'open') && MC.AIQ.open(r, { title: UI.scopeTitle() }); }, '', 'اختبار بالذكاء الاصطناعي: نسخ نص جاهز لأي مساعد');
@@ -4977,8 +4985,12 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const setBtn = btn('settings', 'الإعدادات', () => UI.openSettings());
     const dataBtn = btn('data', 'البيانات', () => UI.openData());
     el.chips = h('nav', { class: 'ui-groups', 'aria-label': 'مصادر البيانات' });
-    el.c1 = h('select', { class: 'sel', 'aria-label': 'المجموعة الرئيسية', onchange: (e) => { S.c1 = e.target.value; S.c2 = ''; S.limit = STEP; render(); } });
-    el.c2 = h('select', { class: 'sel', 'aria-label': 'المجموعة الفرعية', onchange: (e) => { S.c2 = e.target.value; S.limit = STEP; render(); } });
+    el.c1 = h('select', { class: 'sel', 'aria-label': 'المجموعة الرئيسية', onchange: (e) => { S.c1 = e.target.value; S.c2 = []; S.limit = STEP; render(); } });
+    // sub-group filter: a drop-down with check boxes, so several sub-groups can be shown (and quizzed / printed) together
+    el.c2btn = h('button', { class: 'sel ui-ms-btn', type: 'button', 'aria-haspopup': 'true', 'aria-label': 'المجموعة الفرعية', onclick: (e) => { e.stopPropagation(); el.c2pop.hidden = !el.c2pop.hidden; } });
+    el.c2pop = h('div', { class: 'ui-ms-pop', hidden: true, onclick: (e) => e.stopPropagation() });
+    el.c2 = h('div', { class: 'ui-ms' }, el.c2btn, el.c2pop);
+    document.addEventListener('click', () => { el.c2pop.hidden = true; });
     el.dup = h('button', { class: 'chip', type: 'button', title: 'إظهار العناصر المكررة فقط', onclick: () => { S.dupOnly = !S.dupOnly; S.limit = STEP; render(); } }, MC.ico('repeat'), 'مكررات');
     el.hid = h('button', { class: 'chip', type: 'button', title: 'عرض الكلمات المخفية فقط (للتراجع عن الإخفاء)', onclick: () => { S.hiddenMode = S.hiddenMode === 'only' ? 'exclude' : 'only'; S.limit = STEP; S.sel.clear(); render(); } });
     el.langs = h('div', { class: 'ui-lang', role: 'group', 'aria-label': 'إظهار اللغات' });
@@ -5071,7 +5083,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     el.chips.innerHTML = '';
     const mk = (code, label, n) => {
       const on = S.group === code;
-      el.chips.appendChild(h('button', { class: 'ui-gchip' + (on ? ' on' : ''), type: 'button', style: code === 'all' ? { '--gc': 'var(--tx)' } : null, onclick: () => { S.group = code; S.c1 = ''; S.c2 = ''; S.limit = STEP; MC.setSetting('group', code); render(); } }, h('i'), label, ' ', h('span', { class: 'n', text: n })));
+      el.chips.appendChild(h('button', { class: 'ui-gchip' + (on ? ' on' : ''), type: 'button', style: code === 'all' ? { '--gc': 'var(--tx)' } : null, onclick: () => { S.group = code; S.c1 = ''; S.c2 = []; S.limit = STEP; MC.setSetting('group', code); render(); } }, h('i'), label, ' ', h('span', { class: 'n', text: n })));
       if (code !== 'all') { const b = el.chips.lastChild; b.style.setProperty('--gc', MC.groupStyle(code).color); }
     };
     mk('all', 'الكل', st.total);
@@ -5083,13 +5095,28 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     sel.value = String(value || '');
     if (sel.value !== String(value || '')) sel.value = '';
   }
+  function fillC2(c2s) {
+    const on = new Set(S.c2.map(String));
+    el.c2btn.disabled = !S.c1;
+    el.c2btn.textContent = !S.c1 ? '— اختر المجموعة الرئيسية أولًا —' : S.c2.length === 0 ? 'كل المجموعات الفرعية' : S.c2.length === 1 ? ((c2s.find((o) => String(o.v) === String(S.c2[0])) || {}).t || '') : S.c2.length + ' مجموعات فرعية محددة';
+    el.c2pop.innerHTML = '';
+    if (!S.c1) { el.c2pop.hidden = true; return; }
+    el.c2pop.appendChild(h('div', { class: 'ui-ms-head' },
+      h('button', { class: 'btn sm', type: 'button', onclick: () => { S.c2 = c2s.map((o) => o.v); S.limit = STEP; render(); } }, 'تحديد الكل'),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => { S.c2 = []; S.limit = STEP; render(); } }, 'مسح التحديد')));
+    c2s.forEach((o) => {
+      const cb = h('input', { type: 'checkbox' }); cb.checked = on.has(String(o.v));
+      cb.addEventListener('change', () => { S.c2 = c2s.filter((x) => (x.v === o.v ? cb.checked : on.has(String(x.v)))).map((x) => x.v); S.limit = STEP; render(); });
+      el.c2pop.appendChild(h('label', { class: 'ui-ms-it' }, cb, h('span', { text: o.t })));
+    });
+  }
   function renderFilters() {
     const c1s = []; MC.groupsSorted().forEach((gr) => { if (S.group !== 'all' && gr.group !== S.group) return; MC.class1Of(gr.group).forEach((c) => c1s.push({ v: c.c1, t: (S.group === 'all' ? gr.label_ar + ' › ' : '') + pad2(c.sort) + '_' + c.name })); });
-    if (S.c1 && !c1s.some((o) => String(o.v) === String(S.c1))) { S.c1 = ''; S.c2 = ''; }
+    if (S.c1 && !c1s.some((o) => String(o.v) === String(S.c1))) { S.c1 = ''; S.c2 = []; }
     fillSelect(el.c1, c1s, S.c1, 'كل المجموعات الرئيسية');
     const c2s = S.c1 ? MC.class2Of(S.c1).map((c) => ({ v: c.c2, t: pad2(c.sort) + '_' + c.name })) : [];
-    if (S.c2 && !c2s.some((o) => String(o.v) === String(S.c2))) S.c2 = '';
-    fillSelect(el.c2, c2s, S.c2, S.c1 ? 'كل المجموعات الفرعية' : '— اختر المجموعة الرئيسية أولًا —'); el.c2.disabled = !S.c1;
+    S.c2 = S.c2.filter((id) => c2s.some((o) => String(o.v) === String(id)));
+    fillC2(c2s);
     el.dup.classList.toggle('on', S.dupOnly);
     el.hid.innerHTML = MC.icon(S.hiddenMode === 'only' ? 'show' : 'hide') + (S.hiddenMode === 'only' ? ' عرض العادية' : ' المخفية') + ' <span class="n">' + MC.hiddenCount() + '</span>';
     el.hid.classList.toggle('on', S.hiddenMode === 'only'); el.hid.hidden = !MC.hiddenCount() && S.hiddenMode !== 'only';

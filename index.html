@@ -204,6 +204,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-cls-c2 .nm-inp { flex: 1 1 140px; min-width: 0; min-height: 32px; padding: 3px 8px; font-weight: 600; }
 .ui-cls-c1 .ord, .ui-cls-c2 .ord { flex: none; min-width: 30px; text-align: center; font-family: var(--fm); font-weight: 800; font-size: 13px; line-height: 1; padding: 5px 7px; border-radius: 8px; letter-spacing: .5px; }
 .ui-cls-c1 .ord, .ui-cls-c2 .ord { background: var(--hov); color: var(--tx); border: 1px solid var(--bd); }
+.ui-cls-top { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; } .ui-cls-top .ui-cls-add { flex: 1 1 180px; width: auto; margin: 0; } .ui-cls-top .btn:not(.ui-cls-add) { flex: 0 0 auto; }
+.cm-tg { min-width: 30px; padding: 2px 8px; font-size: 14px; line-height: 1; }
 .ui-cls-add { width: 100%; margin: 4px 0 10px; } .md-box.md-cm .ui-cls-add:last-child { margin: 4px 0 0; }
 .ui-cls-c2 .nm, .ui-cls-c1 .nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ui-cls-c2 .n, .ui-cls-c1 .n { font-family: var(--fm); font-size: 11.5px; color: var(--dm); }
@@ -4767,6 +4769,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     let group = startGroup && startGroup !== 'all' && MC.getGroup(startGroup) ? startGroup : (MC.groupsSorted()[0] || {}).group;
     const body = h('div');
     let off = null; let done = false; let mute = false; let focusNext = null;
+    const CKEY = 'mc.cmcollapsed.v1'; const collapsed = new Set((MC.store.get(CKEY, []) || []).map(Number));   // main groups whose sub-groups are folded
+    const saveCollapsed = () => MC.store.set(CKEY, Array.from(collapsed));
     MC.txnBegin();
     const sm = (icon, title, fn, cls) => h('button', { class: 'btn sm ico ' + (cls || ''), type: 'button', title, 'aria-label': title, html: MC.icon(icon), onclick: fn });
     const quiet = (fn) => { mute = true; try { return fn(); } finally { mute = false; } };   // in-place edits do not rebuild the list (keeps the cursor / Tab order)
@@ -4798,24 +4802,28 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       const tabs = h('div', { class: 'ui-groups', style: { paddingTop: 0 } });
       MC.groupsSorted().forEach((gr) => tabs.appendChild(h('button', { class: 'ui-gchip' + (gr.group === group ? ' on' : ''), type: 'button', style: { '--gc': MC.groupStyle(gr.group).color }, onclick: () => { group = gr.group; render(); } }, h('i'), gr.label_ar)));
       body.appendChild(tabs);
-      body.appendChild(addC1Btn());
+      body.appendChild(h('div', { class: 'ui-cls-top' }, addC1Btn(),
+        h('button', { class: 'btn', type: 'button', title: 'طي كل المجموعات الفرعية', onclick: () => { MC.data.class1.forEach((c) => collapsed.add(c.c1)); saveCollapsed(); render(); } }, '▸ طي الكل'),
+        h('button', { class: 'btn', type: 'button', title: 'توسيع كل المجموعات الفرعية', onclick: () => { collapsed.clear(); saveCollapsed(); render(); } }, '▾ توسيع الكل')));
       const focusEls = {};
       MC.class1Of(group).forEach((c1) => {
         const kids = MC.class2Of(c1.c1); const cnt = kids.reduce((s, k) => s + MC.itemsOf(k.c2).length, 0);
-        const hd = h('div', { class: 'hd' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الرئيسية', text: pad2(c1.sort) }), h('span', { class: 'nm', text: c1.name }), h('span', { class: 'tag', text: 'مستوى ' + c1.level }),
-          c1.link ? h('a', { href: c1.link, target: '_blank', rel: 'noopener', text: '▶', title: c1.link }) : null, h('span', { class: 'n', text: cnt + ' عنصر' }),
+        const folded = collapsed.has(c1.c1);
+        const tg = h('button', { class: 'btn sm cm-tg', type: 'button', title: folded ? 'توسيع المجموعات الفرعية' : 'طي المجموعات الفرعية', 'aria-expanded': folded ? 'false' : 'true', text: folded ? '◂' : '▾', onclick: () => { if (folded) collapsed.delete(c1.c1); else collapsed.add(c1.c1); saveCollapsed(); render(); } });
+        const hd = h('div', { class: 'hd' }, tg, h('span', { class: 'ord', title: 'ترتيب المجموعة الرئيسية', text: pad2(c1.sort) }), h('span', { class: 'nm', text: c1.name }), h('span', { class: 'tag', text: 'مستوى ' + c1.level }),
+          c1.link ? h('a', { href: c1.link, target: '_blank', rel: 'noopener', text: '▶', title: c1.link }) : null, h('span', { class: 'n', text: (folded ? kids.length + ' فرعية · ' : '') + cnt + ' عنصر' }),
           sm('up', 'أعلى', () => MC.moveClass1(c1.c1, -1)), sm('down', 'أسفل', () => MC.moveClass1(c1.c1, 1)),
           sm('edit', 'تعديل', async () => { const r = await askClass({ title: 'تعديل المجموعة الرئيسية', name: c1.name, level: c1.level, link: c1.link }); if (r) MC.updateClass1(c1.c1, r); }),
-          sm('add', 'إضافة مجموعة فرعية', () => { const k = MC.addClass2({ c1: c1.c1, name: 'مجموعة فرعية جديدة' }); focusNext = 'c2:' + k.c2; render(); }),
+          sm('add', 'إضافة مجموعة فرعية', () => { const k = MC.addClass2({ c1: c1.c1, name: 'مجموعة فرعية جديدة' }); focusNext = 'c2:' + k.c2; collapsed.delete(c1.c1); saveCollapsed(); render(); }),
           sm('del', 'حذف', async () => { const r = MC.deleteClass1(c1.c1); await del(r, 'المجموعة «' + c1.name + '»', () => MC.deleteClass1(c1.c1, { force: true })); }, 'dng'));
         const box = h('div', { class: 'ui-cls-c1' }, hd);
-        kids.forEach((k) => {
+        (folded ? [] : kids).forEach((k) => {
           const ki = nameInp(k.name, 'اسم المجموعة الفرعية', (v) => MC.updateClass2(k.c2, { name: v })); focusEls['c2:' + k.c2] = ki;
           box.appendChild(h('div', { class: 'ui-cls-c2' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الفرعية', text: pad2(k.sort) }), ki, h('span', { class: 'n', text: MC.itemsOf(k.c2).length }),
             sm('up', 'أعلى', () => MC.moveClass2(k.c2, -1)), sm('down', 'أسفل', () => MC.moveClass2(k.c2, 1)),
             sm('del', 'حذف', async () => { const r = MC.deleteClass2(k.c2); await del(r, 'المجموعة «' + k.name + '»', () => MC.deleteClass2(k.c2, { force: true })); }, 'dng')));
         });
-        if (!kids.length) box.appendChild(h('div', { class: 'ui-cls-c2 hint', text: 'لا توجد مجموعات فرعية — استخدم ＋ لإضافة مجموعة فرعية' }));
+        if (!kids.length && !folded) box.appendChild(h('div', { class: 'ui-cls-c2 hint', text: 'لا توجد مجموعات فرعية — استخدم ＋ لإضافة مجموعة فرعية' }));
         body.appendChild(box);
       });
       body.appendChild(addC1Btn());

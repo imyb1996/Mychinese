@@ -302,6 +302,33 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-r3 .ui-info > span, .ui-r3 .ui-info > .chip { font-size: 12px; }
 @media (max-width: 720px) { .ui-r3 .ui-c-info { width: 100%; justify-content: flex-start; } .ui-r3 .ui-info { justify-content: flex-start; } }
 
+/* ============ phones: words stacked tightly; action buttons appear only after tapping the word ============ */
+@media (max-width: 720px) {
+  .ui-it, .ui-cd { cursor: pointer; }
+  .ui-it { padding: 5px 8px; margin-bottom: 2px; gap: 6px; border-radius: 8px; border-inline-start-width: 4px; }
+  .ui-it .ui-acts, .ui-cd .ui-acts { display: none; }
+  .ui-it.open { background: var(--bll); border-color: var(--bl); }
+  .ui-it.open .ui-acts { display: flex; flex: 1 1 100%; width: 100%; justify-content: space-between; gap: 2px; margin: 3px 0 0; padding-top: 5px; border-top: 1px dashed var(--bd); }
+  .ui-it.open .ui-acts button { flex: 1 1 0; width: auto; height: 38px; }
+  .ui-it .ui-meta { min-width: 0; flex-direction: row; gap: 4px; padding-top: 2px; }
+  .ui-cells { gap: 0; }
+  .ui-list.cards { grid-template-columns: 1fr; gap: 3px; }
+  .ui-cd { padding: 6px 8px; gap: 0; border-radius: 10px; }
+  .ui-cd.open { background: var(--bll); outline: 2px solid var(--bl); }
+  .ui-cd.open .ui-acts { display: flex; justify-content: space-between; gap: 2px; margin-top: 4px; padding-top: 5px; border-top: 1px dashed var(--bd); }
+  .ui-cd.open .ui-acts button { flex: 1 1 0; width: auto; height: 38px; }
+  .ui-h1 { margin: 8px 0 3px; padding: 6px 10px; } .ui-h2 { margin: 5px 0 2px; padding: 3px 8px; }
+}
+
+/* phones: tighter lines so the words sit closer together */
+@media (max-width: 720px) {
+  .ui-cells > div { line-height: 1.2; }
+  .ui-cells .t-zh { line-height: 1.15; }
+  .ui-it { padding: 3px 8px; }
+  .ui-no { padding-top: 3px; } .ui-sel { padding-top: 1px; }
+  .ui-cd .t-zh, .ui-cd .t-pin, .ui-cd .t-ar, .ui-cd .t-en { line-height: 1.2; } .ui-cd .t-ar { padding-top: 2px; margin-top: 1px; }
+}
+
 /* ===== quiz.css ===== */
 /* ============================================================
    quiz.css — quiz wizard + scores statistics. All classes prefixed qz-.
@@ -4770,7 +4797,15 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
   function bumpFont(d) { MC.setSetting('font.all', Math.max(60, Math.min(220, MC.settings.font.all + d))); MC.toast('حجم الخط: ' + MC.settings.font.all + '%'); }
 
+  // phones: the action buttons of a word are shown only after tapping the word, and hidden again on the next tap (saves vertical space)
+  const isPhone = () => !!(g.matchMedia && g.matchMedia('(max-width: 720px)').matches);
+  function toggleOpen(row) {
+    const id = +row.dataset.id; const was = S.openId === id; S.openId = was ? null : id;
+    MC.$$('.ui-it.open, .ui-cd.open', el.list).forEach((r) => r.classList.remove('open'));
+    if (!was) row.classList.add('open');
+  }
   function onListClick(e) {
+    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) { const row = e.target.closest('.ui-it, .ui-cd'); if (row) { toggleOpen(row); return; } }
     const b = e.target.closest('[data-act]'); if (!b || b.matches('input')) return;
     const row = b.closest('[data-id]'); const id = row ? +row.dataset.id : null; const act = b.dataset.act;
     if (act === 'edit') UI.openItemDialog({ mode: 'edit', id });
@@ -4892,8 +4927,9 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const sel = S.sel.has(v.id); const cells = MC.visibleLangs().map((k) => '<div class="t-' + k + '"' + (k === 'zh' ? ' lang="zh-CN"' : '') + '>' + esc(v[k]) + '</div>').join('');
     const chk = '<label class="ui-sel"><input type="checkbox" data-act="sel"' + (sel ? ' checked' : '') + ' aria-label="تحديد"></label>';
     const no = MC.settings.showSort ? '<span class="ui-no">' + Math.round(v.sort) + '</span>' : '';
-    if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + '" data-id="' + v.id + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + actsHTML(v, reorder) + '</div>';
-    return '<div class="ui-it' + (sel ? ' sel' : '') + '" data-id="' + v.id + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + actsHTML(v, reorder) + '</div>';
+    const open = S.openId === v.id ? ' open' : '';
+    if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + actsHTML(v, reorder) + '</div>';
+    return '<div class="ui-it' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + actsHTML(v, reorder) + '</div>';
   }
   function buildBlocks() {
     const out = []; const grouped = MC.settings.grouped; let c1 = null; let c2 = null; const n1 = new Map(); const n2 = new Map();

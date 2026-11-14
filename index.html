@@ -4803,7 +4803,11 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       h('div', { class: 'ui-gate-ic', html: MC.icon('lock') }), h('h2', { text: 'هذا الجهاز غير مسجّل' }),
       h('p', { text: 'اكتب اسم جهازك واضغط «طلب الوصول».' }),
       h('div', { class: 'fld' }, h('label', { text: 'اسم الجهاز' }), nameInp),
-      h('div', { class: 'row nogrow', style: { justifyContent: 'center' } }, reqBtn), status)));
+      h('div', { class: 'row nogrow', style: { justifyContent: 'center' } }, reqBtn), status,
+      h('div', { class: 'fld', style: { marginTop: '14px' } }, h('label', { text: 'UUID هذا الجهاز' }),
+        h('div', { class: 'ui-gate-code', dir: 'ltr', text: S.deviceId() }),
+        h('div', { class: 'row nogrow', style: { justifyContent: 'center', marginTop: '6px' } },
+          h('button', { class: 'btn sm', type: 'button', onclick: () => copyText(S.deviceId(), 'تم نسخ UUID الجهاز') }, MC.ico('dup'), 'نسخ UUID'))))));
     sync(); timer = setInterval(check, 8000); check(); setTimeout(() => { if (!sent) nameInp.focus(); }, 80);
   });
   // small panel for the Google Sheets dialog: this browser's device code + request button

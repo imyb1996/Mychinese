@@ -198,11 +198,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---- dialogs ---- */
 .ui-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 640px) { .ui-two { grid-template-columns: 1fr; } }
 .ui-dupnote { font-size: 12px; color: #92400e; background: var(--yl); border-radius: 6px; padding: 3px 8px; margin-top: 3px; }
-.ui-cls-c1 { border: 1px solid var(--bd); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
-.ui-cls-c1 > .hd { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--gs); border-inline-start: 4px solid var(--gc); font-weight: 700; flex-wrap: wrap; }
-.ui-cls-c2 { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 10px; border-top: 1px solid var(--bdl); font-size: 14px; }
+.ui-cls-c1 { border: 1px solid var(--gc); border-radius: 12px; margin-bottom: 10px; overflow: hidden; padding-bottom: 4px; box-shadow: var(--sh); }
+.ui-cls-c1 > .hd { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; background: var(--gc); color: #fff; font-weight: 700; }
+.ui-cls-c1 > .hd .r1, .ui-cls-c1 > .hd .r2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .ui-cls-c1 > .hd .r2 .lk-inp { flex: 1 1 160px; min-width: 0; }
+.ui-cls-c1 .nm-inp, .ui-cls-c2 .nm-inp { flex: 1 1 140px; min-width: 0; min-height: 32px; padding: 3px 8px; font-weight: 600; } .ui-cls-c1 .lk-inp { min-height: 30px; padding: 2px 8px; font-size: 12px; } .ui-cls-c1 .lv-sel { width: auto; min-width: 92px; min-height: 32px; padding: 2px 6px; }
+.ui-cls-c2 { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 10px; margin-top: 3px; background: var(--gs); color: var(--gc); border-inline-start: 4px solid var(--gc); border-radius: 0 8px 8px 0; font-weight: 700; font-size: 14px; }
 .ui-cls-c1 .ord, .ui-cls-c2 .ord { flex: none; min-width: 30px; text-align: center; font-family: var(--fm); font-weight: 800; font-size: 13px; line-height: 1; padding: 5px 7px; border-radius: 8px; letter-spacing: .5px; }
-.ui-cls-c1 > .hd .ord { background: var(--gc); color: #fff; } .ui-cls-c2 .ord { background: var(--gs); color: var(--gc); border: 1px solid var(--gc); font-size: 12px; padding: 4px 6px; }
+.ui-cls-c1 > .hd .ord { background: #fff; color: var(--gc); box-shadow: 0 1px 3px rgba(0,0,0,.2); font-size: 14px; } .ui-cls-c2 .ord { background: var(--gc); color: #fff; }
+.ui-cls-c1 > .hd .n { color: #fff; background: rgba(255,255,255,.22); padding: 1px 9px; border-radius: 999px; }
+.ui-cls-c1 > .hd .nm-inp, .ui-cls-c1 > .hd .lk-inp, .ui-cls-c1 > .hd .lv-sel { background: var(--card); color: var(--tx); border-color: rgba(255,255,255,.5); }
+.ui-cls-c2 .nm-inp { background: var(--card); color: var(--tx); border-color: var(--gc); }
+.ui-cls-c1 > .hd .btn.sm { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.45); color: #fff; } .ui-cls-c1 > .hd .btn.sm .ic { color: #fff; } .ui-cls-c1 > .hd .btn.sm.dng { background: var(--acc); }
 .ui-cls-add { width: 100%; margin: 4px 0 10px; } .md-box.md-cm .ui-cls-add:last-child { margin: 4px 0 0; }
 .ui-cls-c2 .nm, .ui-cls-c1 .nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ui-cls-c2 .n, .ui-cls-c1 .n { font-family: var(--fm); font-size: 11.5px; color: var(--dm); }
@@ -870,9 +876,16 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 
   /* ---------- mutations ---------- */
   let batchDepth = 0; let batchDirty = false;
+  // Transaction: while open, edits only change the in-memory data (nothing is saved or synced); commit = save once, rollback = back to the snapshot.
+  let txn = null;
+  MC.txnBegin = () => { if (!txn) txn = { snap: JSON.parse(JSON.stringify(MC.data)), dirty: false }; return true; };
+  MC.txnActive = () => !!txn;
+  MC.txnCommit = () => { if (!txn) return false; const d = txn.dirty; txn = null; if (d) { MC.invalidate(); MC.save(); MC.emit('data'); } return d; };
+  MC.txnRollback = () => { if (!txn) return false; const d = txn.dirty; MC.data = txn.snap; txn = null; MC.invalidate(); if (d) MC.emit('data'); return d; };
   function changed() {
     MC.invalidate();
     if (batchDepth) { batchDirty = true; return; }
+    if (txn) { txn.dirty = true; MC.emit('data'); return; }
     MC.save(); MC.emit('data');
   }
   MC.batch = (fn) => { batchDepth++; try { return fn(); } finally { batchDepth--; if (!batchDepth && batchDirty) { batchDirty = false; changed(); } } };
@@ -1118,7 +1131,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         else if (k === 'text') el.textContent = v;
         else if (k === 'value') el.value = v; // property, not attribute (textarea/select need it)
         else if (k === 'html') el.innerHTML = v;
-        else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+        else if (k === 'style' && typeof v === 'object') Object.keys(v).forEach((sk) => { if (sk.slice(0, 2) === '--') el.style.setProperty(sk, v[sk]); else el.style[sk] = v[sk]; });   // custom properties (--gc …) need setProperty
         else if (k === 'dataset') Object.keys(v).forEach((d) => { el.dataset[d] = v[d]; });
         else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
         else if (v === true) el.setAttribute(k, '');
@@ -4753,46 +4766,79 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       setTimeout(() => name.focus(), 50);
     });
   }
+  // Group manager: every field is edited in place (name, level, link); nothing is stored until «حفظ».
+  // All edits run inside a core transaction (MC.txnBegin): «حفظ» commits them (one save / one sync), «إلغاء» (or ×) rolls everything back.
   UI.openClassManager = (startGroup) => {
     let group = startGroup && startGroup !== 'all' && MC.getGroup(startGroup) ? startGroup : (MC.groupsSorted()[0] || {}).group;
     const body = h('div');
-    let off = null;
+    let off = null; let done = false; let mute = false; let focusNext = null;
+    MC.txnBegin();
     const sm = (icon, title, fn, cls) => h('button', { class: 'btn sm ico ' + (cls || ''), type: 'button', title, 'aria-label': title, html: MC.icon(icon), onclick: fn });
+    const quiet = (fn) => { mute = true; try { return fn(); } finally { mute = false; } };   // in-place edits do not rebuild the list (keeps the cursor / Tab order)
+    const nameInp = (value, label, onSave) => {
+      const i = h('input', { class: 'inp nm-inp', type: 'text', value, maxlength: 80, 'aria-label': label });
+      i.addEventListener('change', () => { const v = i.value.trim(); if (!v) { i.value = value; return MC.toast('الاسم مطلوب', 'err'); } if (v !== value) { value = v; quiet(() => onSave(v)); } });
+      i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); });
+      return i;
+    };
+    const lvlSel = (c1) => {
+      const s = h('select', { class: 'sel lv-sel', 'aria-label': 'المستوى', title: 'المستوى' });
+      const max = Math.max(9, +c1.level || 1);
+      for (let n = 1; n <= max; n++) s.appendChild(h('option', { value: n, text: 'مستوى ' + n }));
+      s.value = String(+c1.level || 1);
+      s.addEventListener('change', () => quiet(() => MC.updateClass1(c1.c1, { level: +s.value })));
+      return s;
+    };
     const del = async (res, what, retry) => {
-      if (res.ok) return MC.toast('تم الحذف', 'ok');
+      if (res.ok) return MC.toast('تم الحذف (لن يثبت قبل الضغط على حفظ)', 'ok');
       if (res.reason === 'not-empty') {
-        const msg = what + ' غير فارغ' + (res.c2count != null ? ' (' + res.c2count + ' مجموعة فرعية، ' : ' (') + res.itemCount + ' عنصر).\nسيُحذف كل ما بداخله نهائيًا. متابعة؟';
-        if (await MC.confirm(msg, { danger: true, okLabel: 'حذف الكل' })) { retry(); MC.toast('تم الحذف', 'ok'); }
+        const msg = what + ' غير فارغ' + (res.c2count != null ? ' (' + res.c2count + ' مجموعة فرعية، ' : ' (') + res.itemCount + ' عنصر).\nسيُحذف كل ما بداخله عند الحفظ. متابعة؟';
+        if (await MC.confirm(msg, { danger: true, okLabel: 'حذف الكل' })) { retry(); MC.toast('تم الحذف (لن يثبت قبل الضغط على حفظ)', 'ok'); }
       }
     };
-    // «إضافة مجموعة رئيسية» is shown at the top and at the bottom of the list (the new group is added at the end of the current section)
-    const addC1Btn = () => h('button', { class: 'btn pri ui-cls-add', type: 'button', text: '＋ إضافة مجموعة رئيسية', onclick: async () => { const r = await askClass({ title: 'مجموعة رئيسية جديدة', level: 1 }); if (r) MC.addClass1(Object.assign({ group }, r)); } });
+    // «إضافة مجموعة رئيسية» is shown at the top and at the bottom of the list; the new group appears with an editable name, ready to type
+    const addC1Btn = () => h('button', { class: 'btn pri ui-cls-add', type: 'button', text: '＋ إضافة مجموعة رئيسية', onclick: () => { const c = MC.addClass1({ group, name: 'مجموعة رئيسية جديدة', level: 1 }); focusNext = 'c1:' + c.c1; render(); } });
     const render = () => {
       body.innerHTML = '';
       const tabs = h('div', { class: 'ui-groups', style: { paddingTop: 0 } });
       MC.groupsSorted().forEach((gr) => tabs.appendChild(h('button', { class: 'ui-gchip' + (gr.group === group ? ' on' : ''), type: 'button', style: { '--gc': MC.groupStyle(gr.group).color }, onclick: () => { group = gr.group; render(); } }, h('i'), gr.label_ar)));
       body.appendChild(tabs);
       body.appendChild(addC1Btn());
-      const st = MC.groupStyle(group);
+      const st = MC.groupStyle(group); const focusEls = {};
       MC.class1Of(group).forEach((c1) => {
         const kids = MC.class2Of(c1.c1); const cnt = kids.reduce((s, k) => s + MC.itemsOf(k.c2).length, 0);
-        const hd = h('div', { class: 'hd' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الرئيسية', text: pad2(c1.sort) }), h('span', { class: 'nm', text: c1.name }), h('span', { class: 'tag', text: 'مستوى ' + c1.level }), c1.link ? h('a', { href: c1.link, target: '_blank', rel: 'noopener', text: '▶', title: c1.link }) : null, h('span', { class: 'n', text: cnt + ' عنصر' }),
-          sm('up', 'أعلى', () => MC.moveClass1(c1.c1, -1)), sm('down', 'أسفل', () => MC.moveClass1(c1.c1, 1)),
-          sm('edit', 'تعديل', async () => { const r = await askClass({ title: 'تعديل المجموعة الرئيسية', name: c1.name, level: c1.level, link: c1.link }); if (r) MC.updateClass1(c1.c1, r); }),
-          sm('add', 'إضافة مجموعة فرعية', async () => { const n = await MC.prompt('اسم المجموعة الفرعية', '', { title: 'مجموعة فرعية جديدة في «' + c1.name + '»' }); if (n && n.trim()) MC.addClass2({ c1: c1.c1, name: n.trim() }); }),
-          sm('del', 'حذف', async () => { const r = MC.deleteClass1(c1.c1); await del(r, 'المجموعة «' + c1.name + '»', () => MC.deleteClass1(c1.c1, { force: true })); }, 'dng'));
+        const ni = nameInp(c1.name, 'اسم المجموعة الرئيسية', (v) => MC.updateClass1(c1.c1, { name: v })); focusEls['c1:' + c1.c1] = ni;
+        const link = h('input', { class: 'inp lk-inp', type: 'url', dir: 'ltr', placeholder: 'رابط (اختياري)', value: c1.link || '', 'aria-label': 'رابط المجموعة' });
+        link.addEventListener('change', () => quiet(() => MC.updateClass1(c1.c1, { link: link.value.trim() })));
+        const hd = h('div', { class: 'hd' },
+          h('div', { class: 'r1' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الرئيسية', text: pad2(c1.sort) }), ni, lvlSel(c1), h('span', { class: 'n', text: cnt + ' عنصر' })),
+          h('div', { class: 'r2' }, link,
+            sm('up', 'أعلى', () => MC.moveClass1(c1.c1, -1)), sm('down', 'أسفل', () => MC.moveClass1(c1.c1, 1)),
+            sm('add', 'إضافة مجموعة فرعية', () => { const k = MC.addClass2({ c1: c1.c1, name: 'مجموعة فرعية جديدة' }); focusNext = 'c2:' + k.c2; render(); }),
+            sm('del', 'حذف', async () => { const r = MC.deleteClass1(c1.c1); await del(r, 'المجموعة «' + c1.name + '»', () => MC.deleteClass1(c1.c1, { force: true })); }, 'dng')));
         const box = h('div', { class: 'ui-cls-c1', style: { '--gc': st.color, '--gs': st.soft } }, hd);
-        kids.forEach((k) => box.appendChild(h('div', { class: 'ui-cls-c2' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الفرعية', text: pad2(k.sort) }), h('span', { class: 'nm', text: k.name }), h('span', { class: 'n', text: MC.itemsOf(k.c2).length }),
-          sm('up', 'أعلى', () => MC.moveClass2(k.c2, -1)), sm('down', 'أسفل', () => MC.moveClass2(k.c2, 1)),
-          sm('edit', 'إعادة تسمية', async () => { const n = await MC.prompt('الاسم', k.name, { title: 'إعادة تسمية المجموعة الفرعية' }); if (n && n.trim()) MC.updateClass2(k.c2, { name: n.trim() }); }),
-          sm('del', 'حذف', async () => { const r = MC.deleteClass2(k.c2); await del(r, 'المجموعة «' + k.name + '»', () => MC.deleteClass2(k.c2, { force: true })); }, 'dng'))));
+        kids.forEach((k) => {
+          const ki = nameInp(k.name, 'اسم المجموعة الفرعية', (v) => MC.updateClass2(k.c2, { name: v })); focusEls['c2:' + k.c2] = ki;
+          box.appendChild(h('div', { class: 'ui-cls-c2' }, h('span', { class: 'ord', title: 'ترتيب المجموعة الفرعية', text: pad2(k.sort) }), ki, h('span', { class: 'n', text: MC.itemsOf(k.c2).length }),
+            sm('up', 'أعلى', () => MC.moveClass2(k.c2, -1)), sm('down', 'أسفل', () => MC.moveClass2(k.c2, 1)),
+            sm('del', 'حذف', async () => { const r = MC.deleteClass2(k.c2); await del(r, 'المجموعة «' + k.name + '»', () => MC.deleteClass2(k.c2, { force: true })); }, 'dng')));
+        });
         if (!kids.length) box.appendChild(h('div', { class: 'ui-cls-c2 hint', text: 'لا توجد مجموعات فرعية — استخدم ＋ لإضافة مجموعة فرعية' }));
         body.appendChild(box);
       });
       body.appendChild(addC1Btn());
+      if (focusNext && focusEls[focusNext]) { const el = focusEls[focusNext]; focusNext = null; setTimeout(() => { el.scrollIntoView({ block: 'center' }); el.focus(); el.select(); }, 30); }
     };
-    const m = MC.modal.open({ title: '🗂 إدارة المجموعات', body, className: 'md-cm', footer: [{ label: 'إغلاق', cls: 'pri', onClick: (c) => c() }], onClose: () => { if (off) off(); } });
-    off = MC.on('data', render); render(); return m;
+    const finish = (commit) => { if (done) return; done = true; if (off) off(); if (commit) MC.txnCommit(); else MC.txnRollback(); };
+    const m = MC.modal.open({
+      title: '🗂 إدارة المجموعات', body, className: 'md-cm', persistent: true,
+      footer: [
+        { label: '💾 حفظ', cls: 'pri', onClick: (c) => { finish(true); MC.toast('تم حفظ التعديلات', 'ok'); c(); } },
+        { label: 'إلغاء', onClick: (c) => { finish(false); c(); } },
+      ],
+      onClose: () => finish(false),
+    });
+    off = MC.on('data', () => { if (!mute && !done) render(); }); render(); return m;
   };
 
   /* ---------- settings ---------- */

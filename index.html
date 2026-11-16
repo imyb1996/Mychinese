@@ -247,6 +247,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-ms { position: relative; } .ui-ms-btn { width: 100%; text-align: start; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-ms-pop { position: absolute; z-index: 60; top: calc(100% + 4px); inset-inline-start: 0; min-width: 100%; width: max-content; max-width: min(92vw, 360px); max-height: 52vh; overflow: auto; background: var(--sf); border: 1px solid var(--bd); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; }
 .ui-ms-pop[hidden] { display: none; } .ui-ms-head { display: flex; gap: 6px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
+.ui-ms-rng { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
+.ui-ms-rng .ui-dim { font-size: 12.5px; color: var(--tx2, #666); } .ui-ms-n { width: 64px; min-width: 0; padding: 4px 6px; text-align: center; }
 .ui-ms-it { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13.5px; } .ui-ms-it:hover { background: var(--bg2, rgba(0,0,0,.06)); } .ui-ms-it input { width: 17px; height: 17px; accent-color: var(--bl); flex: none; }
 .ui-search .inp { min-height: 40px; }
 .ui-search button { display: grid; place-items: center; }
@@ -649,6 +651,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bk-new-t { font-size: 12.5px; font-weight: 600; color: var(--bl); margin-bottom: 6px; }
 .bk-new .fld { margin-bottom: 4px; }
 .bk-info { margin-top: 4px; }
+.bk-extwrap { max-height: 280px; } .bk-exist .bk-sec-h { margin-bottom: 6px; } .bk-ask { margin-top: 6px; font-size: 13.5px; line-height: 1.7; }
 
 /* paste box */
 .bk-ta { min-height: 120px; font-family: var(--fz); font-size: 14px; line-height: 1.5; white-space: pre; overflow: auto; }
@@ -821,6 +824,14 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   MC.class1Of = (group) => (ix().grpC1.get(group) || []).slice();   // sorted
   MC.class2Of = (c1) => (ix().c1C2.get(+c1) || []).slice();         // sorted
   MC.itemsOf = (c2) => (ix().c2Items.get(+c2) || []).slice();       // sorted
+  // Sub-groups of main group c1 whose order number (the «03_» prefix) lies between `from` and `to` (inclusive; either may be empty = open end;
+  // reversed bounds are swapped). Returns their ids in order. Used by the «from … to …» auto-selection on the main screen.
+  MC.c2Range = (c1, from, to) => {
+    const num = (v) => (v === '' || v == null || !Number.isFinite(+v) ? null : Math.round(+v));
+    let a = num(from); let b = num(to);
+    if (a != null && b != null && a > b) { const t = a; a = b; b = t; }
+    return MC.class2Of(c1).filter((c) => { const n = Math.round(c.sort); return (a == null || n >= a) && (b == null || n <= b); }).map((c) => c.c2);
+  };
   MC.dupIds = (id) => ix().dup.get(+id) || null;                    // all ids sharing the same Chinese text (or null)
   MC.dupGroups = () => ix().dupGroups.slice();
 
@@ -945,6 +956,18 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     affected.forEach(renumberItems); changed(); return affected.size;
   };
   MC.deleteItem = (id) => MC.deleteItems([id]);
+  // Puts back items that were deleted (undo of «replace» in the bulk screen): same ids, so their scores come back too. list: [{id,c2,sort,ar,en,zh,pin,hidden?}]
+  MC.restoreItems = (list) => MC.batch(() => {
+    const have = new Set(MC.data.items.map((i) => i.id)); const hid = []; const touched = new Set();
+    (list || []).forEach((x) => {
+      if (have.has(+x.id) || !MC.getClass2(x.c2)) return;
+      MC.data.items.push({ id: +x.id, c2: +x.c2, sort: +x.sort || 0, ar: x.ar || '', en: x.en || '', zh: x.zh || '', pin: x.pin || '' });
+      have.add(+x.id); touched.add(+x.c2); if (x.hidden) hid.push(+x.id);
+    });
+    touched.forEach(renumberItems); if (hid.length) MC.setHidden(hid, true);
+    if (touched.size) changed();
+    return touched.size;
+  });
 
   MC.addClass1 = (f) => {
     if (!MC.getGroup(f.group)) throw new Error('group غير موجود');
@@ -4408,7 +4431,54 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const toast = (m, t) => MC.toast(m, t);
 
     /* ---------- destination ---------- */
-    function curC2() { return typeof S.c2 === 'number' ? S.c2 : null; }
+    // The sub-group the batch is going into IF it already exists: the chosen one, or a typed new name that matches an existing one
+    // (findOrAddClass2 would reuse it). null when a brand-new sub-group will be created.
+    function existingC2() {
+      if (typeof S.c2 === 'number') return MC.getClass2(S.c2) || null;
+      if (S.c2 !== NEW) return null;
+      let c1 = null;
+      if (typeof S.c1 === 'number') c1 = S.c1;
+      else if (S.c1 === NEW) { const k1 = MC.norm(S.n1.name); const f1 = k1 ? MC.class1Of(S.group).find((c) => MC.norm(c.name) === k1) : null; c1 = f1 ? f1.c1 : null; }
+      if (c1 == null) return null;
+      const k2 = MC.norm(S.n2); if (!k2) return null;
+      return MC.class2Of(c1).find((c) => MC.norm(c.name) === k2) || null;
+    }
+    function curC2() { const c = existingC2(); return c ? c.c2 : null; }
+    const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
+    // typing a name that matches an existing group changes what is shown below / how duplicates are labelled
+    function onNameChange() { const c = existingC2(); const id = c ? c.c2 : null; if (id !== S.ex) { S.ex = id; renderExisting(); if (el.tbody) recompute(); } }
+    // what the destination sub-group already holds, shown at the bottom of the screen
+    function renderExisting() {
+      const c = existingC2(); const box = el.exist; if (!box) return;
+      box.textContent = ''; S.ex = c ? c.c2 : null;
+      if (!c) { box.hidden = true; return; }
+      const list = MC.itemsOf(c.c2); const CAP = 500; box.hidden = false;
+      box.appendChild(h('div', { class: 'bk-sec-h' }, h('b', { text: '📚 الموجود الآن في «' + pad2(c.sort) + '_' + c.name + '» (' + list.length + ' عنصر)' }),
+        h('span', { class: 'hint', text: 'للاطلاع فقط — عند الحفظ سيسألك التطبيق: إضافة العناصر الجديدة أم استبدال هذه.' })));
+      if (!list.length) { box.appendChild(h('div', { class: 'hint', text: 'المجموعة فارغة.' })); return; }
+      const rows = list.slice(0, CAP).map((it, i) => '<tr' + (MC.isHidden(it.id) ? ' class="bk-off"' : '') + '><td class="bk-c-n">' + (i + 1) + '</td>' + COLS.map((k) => '<td class="bk-c bk-' + k.k + '">' + esc(it[k.k]) + '</td>').join('') + '</tr>').join('');
+      box.appendChild(h('div', { class: 'bk-tblwrap scroll-y bk-extwrap', html: '<table class="tbl bk-tbl"><thead><tr><th class="bk-c-n">#</th>' + COLS.map((k) => '<th>' + k.t + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table>' }));
+      if (list.length > CAP) box.appendChild(h('div', { class: 'hint', text: 'تُعرض أول ' + CAP + ' من ' + list.length + '.' }));
+    }
+    // asks what to do with the items the sub-group already has -> 'add' | 'replace' | null (cancel)
+    function askMode(c, n) {
+      const have = MC.itemsOf(c.c2).length;
+      return new Promise((resolve) => {
+        let done = false; const fin = (v) => { if (!done) { done = true; resolve(v); } };
+        MC.modal.open({
+          title: 'المجموعة الفرعية فيها عناصر', width: '470px', className: 'md-sm', onClose: () => fin(null),
+          body: h('div', { class: 'md-msg' },
+            h('div', null, 'في «' + pad2(c.sort) + '_' + c.name + '» الآن ', h('b', { text: String(have) }), ' عنصر، وأنت تحفظ ', h('b', { text: String(n) }), ' عنصر جديد.'),
+            h('div', { class: 'bk-ask' }, h('b', { text: '➕ إضافة: ' }), 'تُضاف الجديدة بعد الموجودة وتبقى الموجودة كما هي.'),
+            h('div', { class: 'bk-ask' }, h('b', { text: '🔄 استبدال: ' }), 'تُحذف الـ ' + have + ' الموجودة (ودرجاتها) ويحل محلها الجديدة. يمكن التراجع بزر «تراجع».')),
+          footer: [
+            { label: 'إلغاء', onClick: (close) => { fin(null); close(); } },
+            { label: '🔄 استبدال الموجود', cls: 'dng', onClick: (close) => { fin('replace'); close(); } },
+            { label: '➕ إضافة إلى الموجود', cls: 'pri', onClick: (close) => { fin('add'); close(); } },
+          ],
+        });
+      });
+    }
     function renderDest() {
       const groups = MC.groupsSorted();
       if (!groups.some((x) => x.group === S.group)) { S.group = groups[0] ? groups[0].group : ''; S.c1 = ''; S.c2 = ''; }
@@ -4441,20 +4511,21 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       el.dest.appendChild(h('div', { class: 'row bk-dest' }, fld('القسم', gSel), fld('المجموعة الرئيسية', c1Sel), fld('المجموعة الفرعية', c2Sel)));
 
       if (S.c1 === NEW) {
-        const num1 = h('span', { class: 'bk-num' }); const upd1 = () => { const q = seq1(); num1.textContent = pad(q.n) + '_'; num1.title = q.exists ? 'موجودة بهذا الاسم: ستُضاف العناصر إليها' : 'رقم التسلسل الجديد'; };
-        const nm = h('input', { class: 'inp', type: 'text', placeholder: 'اسم المجموعة الرئيسية', oninput: () => { S.n1.name = nm.value; upd1(); } }); nm.value = S.n1.name; upd1();
+        const num1 = h('span', { class: 'bk-num' }); const upd1 = () => { const q = seq1(); num1.textContent = pad(q.n) + '_'; num1.title = q.exists ? 'موجودة بهذا الاسم: العناصر ستذهب إليها' : 'رقم التسلسل الجديد'; };
+        const nm = h('input', { class: 'inp', type: 'text', placeholder: 'اسم المجموعة الرئيسية', oninput: () => { S.n1.name = nm.value; upd1(); onNameChange(); } }); nm.value = S.n1.name; upd1();
         const lv = mkSel([{ v: 1, t: 'المستوى 1' }, { v: 2, t: 'المستوى 2' }, { v: 3, t: 'المستوى 3' }], S.n1.level, (v) => { S.n1.level = +v; });
         const lk = h('input', { class: 'inp', type: 'text', dir: 'ltr', placeholder: 'رابط (اختياري)', oninput: () => { S.n1.link = lk.value; } }); lk.value = S.n1.link;
         el.dest.appendChild(h('div', { class: 'bk-new' }, h('div', { class: 'bk-new-t', text: '➕ مجموعة رئيسية جديدة (يُنشأ عند الحفظ فقط)' }), h('div', { class: 'row' }, fld('الرقم والاسم', h('div', { class: 'bk-numrow' }, num1, nm)), fld('المستوى', lv), fld('الرابط', lk))));
       }
       if (S.c2 === NEW) {
-        const num2 = h('span', { class: 'bk-num' }); const upd2 = () => { const q = seq2(); num2.textContent = pad(q.n) + '_'; num2.title = q.exists ? 'موجودة بهذا الاسم: ستُضاف العناصر إليها' : 'رقم التسلسل الجديد'; };
-        const nm2 = h('input', { class: 'inp', type: 'text', placeholder: 'اسم المجموعة الفرعية', oninput: () => { S.n2 = nm2.value; upd2(); } }); nm2.value = S.n2; upd2();
+        const num2 = h('span', { class: 'bk-num' }); const upd2 = () => { const q = seq2(); num2.textContent = pad(q.n) + '_'; num2.title = q.exists ? 'موجودة بهذا الاسم: سيُسأل هل تُضاف إليها أم تُستبدل' : 'رقم التسلسل الجديد'; };
+        const nm2 = h('input', { class: 'inp', type: 'text', placeholder: 'اسم المجموعة الفرعية', oninput: () => { S.n2 = nm2.value; upd2(); onNameChange(); } }); nm2.value = S.n2; upd2();
         el.dest.appendChild(h('div', { class: 'bk-new' }, h('div', { class: 'bk-new-t', text: '➕ مجموعة فرعية جديدة (يُنشأ عند الحفظ فقط)' }), fld('الرقم والاسم', h('div', { class: 'bk-numrow' }, num2, nm2))));
       }
       if (typeof S.c2 === 'number') {
-        el.dest.appendChild(h('div', { class: 'hint bk-info', text: 'ستُضاف العناصر في آخر هذه المجموعة الفرعية (فيه الآن ' + MC.itemsOf(S.c2).length + ' عنصر).' }));
+        el.dest.appendChild(h('div', { class: 'hint bk-info', text: 'فيها الآن ' + MC.itemsOf(S.c2).length + ' عنصر (تظهر في أسفل الشاشة). عند الحفظ يُسأل: إضافة أم استبدال.' }));
       }
+      renderExisting();
     }
 
     /* ---------- mapping ---------- */
@@ -4630,8 +4701,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       const inc = S.items.filter((x) => x.inc);
       if (!inc.length) { toast('لا توجد صفوف للحفظ', 'err'); return; }
       if (!validateDest()) return;
+      // the sub-group already has items: add to them or replace them?
+      let mode = 'add'; const tgt = existingC2();
+      if (tgt && MC.itemsOf(tgt.c2).length) { mode = await askMode(tgt, inc.length); if (!mode) return; }
+      // when replacing, a duplicate that exists only in the sub-group being replaced is not a duplicate any more
+      const onlyHere = (a) => a.existing.length > 0 && a.more === 0 && a.existing.every((e) => e.sameC2);
       let dup = 0; let miss = 0;
-      S.items.forEach((x, i) => { if (!x.inc) return; const a = S.an[i]; if (a.missing) miss++; else if (a.dupDb || a.dupPaste) dup++; });
+      S.items.forEach((x, i) => { if (!x.inc) return; const a = S.an[i]; if (a.missing) miss++; else if (a.dupPaste || (a.dupDb && !(mode === 'replace' && onlyHere(a)))) dup++; });
       const warn = [];
       if (dup) warn.push(dup + ' صفًا مكررًا');
       if (miss && !S.autofill) warn.push(miss + ' صفًا بلا صيني');
@@ -4641,7 +4717,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       }
       if (S.autofill) { const r = await runFill(inc); if (r === 'stop') return; }
       if (closed) return;
-      commit(inc);
+      commit(inc, mode);
     }
     // "Lesson 3" -> "Lesson 4", "الدرس 12 - جزء" -> "الدرس 13 - جزء"; names without a number give '' (user types the name)
     function nextName(name) {
@@ -4650,8 +4726,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     }
     // suggested name for the next sub-group of main group c1: the last one's name with its trailing number +1 (or '')
     function suggestFor(c1) { const k = MC.class2Of(c1); return k.length ? nextName(k[k.length - 1].name) : ''; }
-    function commit(inc) {
-      let c1o = null; let c2o = null; let made1 = false; let made2 = false; let added = null;
+    function commit(inc, mode) {
+      let c1o = null; let c2o = null; let made1 = false; let made2 = false; let added = null; let removed = null;
       try {
         MC.batch(() => {
           if (S.c1 === NEW) {
@@ -4662,12 +4738,17 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
             const had2 = new Set(MC.class2Of(c1o.c1).map((c) => c.c2));
             c2o = MC.findOrAddClass2(c1o.c1, S.n2); made2 = !had2.has(c2o.c2);
           } else c2o = MC.getClass2(S.c2);
+          if (mode === 'replace') {   // remember what is removed so «تراجع» can put it back (same ids -> same scores)
+            const old = MC.itemsOf(c2o.c2);
+            removed = old.map((it) => ({ id: it.id, c2: it.c2, sort: it.sort, ar: it.ar, en: it.en, zh: it.zh, pin: it.pin, hidden: MC.isHidden(it.id) }));
+            if (old.length) MC.deleteItems(old.map((it) => it.id));
+          }
           added = MC.addItems(inc.map((x) => ({ c2: c2o.c2, ar: x.ar, en: x.en, zh: x.zh, pin: x.pin })));
         });
       } catch (e) { toast('تعذّر الحفظ: ' + (e && e.message ? e.message : e), 'err'); return; }
-      S.last = { ids: added.map((it) => it.id), c1: made1 ? c1o.c1 : null, c2: made2 ? c2o.c2 : null };
+      S.last = { ids: added.map((it) => it.id), c1: made1 ? c1o.c1 : null, c2: made2 ? c2o.c2 : null, removed: removed && removed.length ? removed : null };
       const skipped = S.items.length - inc.length;
-      toast('✔ أُضيف ' + added.length + ' عنصرًا إلى «' + c2o.name + '»' + (skipped ? ' — استُبعد ' + skipped : ''), 'ok');
+      toast(mode === 'replace' ? '✔ استُبدلت عناصر «' + c2o.name + '»: حُذف ' + (removed ? removed.length : 0) + ' وأُضيف ' + added.length + (skipped ? ' — استُبعد ' + skipped : '') : '✔ أُضيف ' + added.length + ' عنصرًا إلى «' + c2o.name + '»' + (skipped ? ' — استُبعد ' + skipped : ''), 'ok');
       // keep the screen open for the next batch
       // next batch = next lesson: the sub-group defaults to "➕ new" (same main group), with the next number suggested when the name ends in one ("الدرس 3" → "الدرس 4")
       S.c1 = c1o.c1; S.c2 = NEW; S.n1 = { name: '', level: 1, link: '' }; S.n2 = nextName(c2o.name);
@@ -4680,15 +4761,17 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       const L = S.last;
       try {
         MC.deleteItems(L.ids);
+        if (L.removed) MC.restoreItems(L.removed);
         if (L.c2 != null) MC.deleteClass2(L.c2);   // non-forced: only removes the class if it is empty
         if (L.c1 != null) MC.deleteClass1(L.c1);
       } catch (e) { toast('تعذّر التراجع: ' + e.message, 'err'); return; }
-      S.last = null; toast('↩ تم التراجع عن ' + L.ids.length + ' عنصرًا');
+      S.last = null; toast('↩ تم التراجع عن ' + L.ids.length + ' عنصرًا' + (L.removed ? ' وأُعيد ' + L.removed.length + ' عنصرًا كان مستبدلًا' : ''));
       renderDest(); recompute();
     }
 
     /* ---------- build the DOM ---------- */
     el.dest = h('div', { class: 'bk-sec bk-lock' });
+    el.exist = h('div', { class: 'bk-sec bk-exist', hidden: true });
     el.ta = h('textarea', { class: 'txa bk-ta', rows: '6', spellcheck: 'false', dir: 'auto', placeholder: 'الصق هنا من Excel — حدّد الخلايا في Excel (Ctrl+C) ثم الصق (Ctrl+V). كل صف = عنصر، والأعمدة مفصولة بـ Tab.' });
     let tmr = null;
     el.ta.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(onText, 180); });
@@ -4749,7 +4832,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
             h('button', { class: 'btn sm', type: 'button', text: 'استبعاد الناقص', onclick: () => setAllInc((x, a) => x.inc && !(a && a.missing)) }),
             h('button', { class: 'btn sm ghost', type: 'button', text: 'تضمين الكل', onclick: () => setAllInc(() => true) }))),
         h('div', { class: 'hint', text: 'انقر مرتين على أي خلية لتعديلها.' }),
-        el.wrap, el.empty));
+        el.wrap, el.empty),
+      el.exist);
 
     el.saveBtn = h('button', { class: 'btn pri', type: 'button', text: '💾 حفظ', onclick: () => { save(); } });
     el.undoBtn = h('button', { class: 'btn', type: 'button', hidden: true, text: '↩ تراجع', title: 'حذف آخر دفعة أُضيفت', onclick: undo });
@@ -5207,6 +5291,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   'use strict';
   const MC = g.MC; const h = MC.h; const esc = MC.esc;
   const UI = (MC.UI = MC.UI || {});
+  const rng = { from: '', to: '' };   // the «from … to …» sub-group range typed in the sub-group menu (kept while the menu re-renders)
   const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
   const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
   const el = {};
@@ -5252,7 +5337,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     el.lvl = h('select', { class: 'sel', 'aria-label': 'المستوى', onchange: (e) => { S.level = e.target.value; S.limit = STEP; render(); } });
     el.c1 = h('select', { class: 'sel', 'aria-label': 'المجموعة الرئيسية', onchange: (e) => { S.c1 = e.target.value; S.c2 = []; S.limit = STEP; render(); } });
     // sub-group filter: a drop-down with check boxes, so several sub-groups can be shown (and quizzed / printed) together
-    el.c2btn = h('button', { class: 'sel ui-ms-btn', type: 'button', 'aria-haspopup': 'true', 'aria-label': 'المجموعة الفرعية', onclick: (e) => { e.stopPropagation(); el.c2pop.hidden = !el.c2pop.hidden; } });
+    el.c2btn = h('button', { class: 'sel ui-ms-btn', type: 'button', 'aria-haspopup': 'true', 'aria-label': 'المجموعة الفرعية', onclick: (e) => { e.stopPropagation(); el.c2pop.hidden = !el.c2pop.hidden; placePop(); } });
     el.c2pop = h('div', { class: 'ui-ms-pop', hidden: true, onclick: (e) => e.stopPropagation() });
     el.c2 = h('div', { class: 'ui-ms' }, el.c2btn, el.c2pop);
     document.addEventListener('click', () => { el.c2pop.hidden = true; });
@@ -5360,6 +5445,14 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     sel.value = String(value || '');
     if (sel.value !== String(value || '')) sel.value = '';
   }
+  // keep the open sub-group menu inside the window (it is as wide as its content, so on a narrow screen it could run off an edge)
+  function placePop() {
+    const p = el.c2pop; if (!p || p.hidden) return;
+    p.style.transform = '';
+    const r = p.getBoundingClientRect(); const W = document.documentElement.clientWidth; let dx = 0;
+    if (r.left < 6) dx = 6 - r.left; else if (r.right > W - 6) dx = W - 6 - r.right;
+    if (dx) p.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+  }
   function fillC2(c2s) {
     const on = new Set(S.c2.map(String));
     el.c2btn.disabled = !S.c1;
@@ -5369,11 +5462,28 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     el.c2pop.appendChild(h('div', { class: 'ui-ms-head' },
       h('button', { class: 'btn sm', type: 'button', onclick: () => { S.c2 = c2s.map((o) => o.v); S.limit = STEP; render(); } }, 'تحديد الكل'),
       h('button', { class: 'btn sm', type: 'button', onclick: () => { S.c2 = []; S.limit = STEP; render(); } }, 'مسح التحديد')));
+    // automatic selection by order number: «from 3 to 7» instead of ticking every sub-group by hand (replaces the current selection)
+    if (c2s.length) {
+      const nums = MC.class2Of(S.c1).map((c) => Math.round(c.sort)); const lo = Math.min(...nums); const hi = Math.max(...nums);
+      const mkN = (key, ph) => { const i = h('input', { class: 'inp ui-ms-n', type: 'number', inputmode: 'numeric', min: String(lo), max: String(hi), placeholder: ph, 'aria-label': ph }); i.value = rng[key]; i.addEventListener('input', () => { rng[key] = i.value; }); return i; };
+      const fromI = mkN('from', String(lo)); const toI = mkN('to', String(hi));
+      const apply = () => {
+        const ids = MC.c2Range(S.c1, rng.from, rng.to);
+        if (!ids.length) { MC.toast('لا توجد مجموعة فرعية بهذه الأرقام (من ' + lo + ' إلى ' + hi + ')', 'err'); return; }
+        S.c2 = ids; S.limit = STEP; render();
+        MC.toast('تم تحديد ' + ids.length + ' مجموعة فرعية', 'ok');
+      };
+      [fromI, toI].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }));
+      el.c2pop.appendChild(h('div', { class: 'ui-ms-rng', title: 'تحديد تلقائي بأرقام الترتيب الظاهرة قبل أسماء المجموعات (مثل 03_)' },
+        h('span', { class: 'ui-dim', text: 'من رقم' }), fromI, h('span', { class: 'ui-dim', text: 'إلى' }), toI,
+        h('button', { class: 'btn sm pri', type: 'button', onclick: apply }, 'تحديد')));
+    }
     c2s.forEach((o) => {
       const cb = h('input', { type: 'checkbox' }); cb.checked = on.has(String(o.v));
       cb.addEventListener('change', () => { S.c2 = c2s.filter((x) => (x.v === o.v ? cb.checked : on.has(String(x.v)))).map((x) => x.v); S.limit = STEP; render(); });
       el.c2pop.appendChild(h('label', { class: 'ui-ms-it' }, cb, h('span', { text: o.t })));
     });
+    placePop();
   }
   function renderFilters() {
     // levels that exist in the current data group; choosing one narrows the main-group list (and the shown items), choosing none leaves everything available

@@ -526,6 +526,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .qz-prompt { padding: 16px 40px; }
 }
 
+.qz-formhelp { font-size: 12.5px; line-height: 1.7; } .qz-formhelp .sel { color: var(--pu); font-weight: 700; } .qz-formhelp > div { margin-top: 2px; }
 .qz-chip.sm { min-height: 28px; padding: 2px 10px; font-size: 12.5px; }
 .qz-form { margin-top: 6px; align-items: center; padding-inline-start: 8px; border-inline-start: 3px solid var(--pu); }
 .qz-zhp { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.25; }
@@ -2346,8 +2347,12 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 
    Three languages can be picked, on the question side AND on the answer side (several at once):
         中文 (Chinese)   عربي (Arabic)   English
-   The Chinese choice has three forms:  «رمز وبينيين» (default, slot 'zhp')  /  «رمز فقط» ('zh')  /  «بينيين فقط» ('pin').
-   So a side is a list of SLOTS such as ['zhp','ar'] (at most one Chinese slot per side).
+   The Chinese choice has four forms:
+        «رمز وبينيين»  (default, 'zhp')  each question shows the characters with the pinyin under them
+        «رمز أو بينيين» ('zhx')          some questions show the characters only, others the pinyin only (used evenly)
+        «رمز فقط» ('zh')  /  «بينيين فقط» ('pin')
+   So a side is a list of SLOTS such as ['zhp','ar'] (at most one Chinese slot per side). 'zhx' is expanded to 'zh' + 'pin' when the
+   directions are built, so a real question always has a concrete slot (zhp / zh / pin / ar / en).
 
    Every question uses ONE direction = one question slot + one answer slot, chosen among the selected ones.
    A direction is valid only when its two slots share no field: the question must never contain the answer.
@@ -2361,12 +2366,16 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 
   const SLOTS = {
     zhp: { fields: ['zh', 'pin'], main: 'zh', label: '中文 رمز + بينيين', long: 'الصينية (رمز + بينيين)' },
+    zhx: { fields: ['zh', 'pin'], main: 'zh', label: '中文 رمز أو بينيين', long: 'الصينية (رمز أو بينيين: بعض الأسئلة بالرمز فقط وبعضها بالبينيين فقط)', either: true },
     zh: { fields: ['zh'], main: 'zh', label: '中文 رمز فقط', long: 'الصينية (رمز فقط)' },
     pin: { fields: ['pin'], main: 'pin', label: 'بينيين فقط', long: 'الصينية (بينيين فقط)' },
     ar: { fields: ['ar'], main: 'ar', label: 'عربي', long: 'العربية' },
     en: { fields: ['en'], main: 'en', label: 'English', long: 'الإنجليزية' },
   };
-  const CHINESE = ['zhp', 'zh', 'pin'];
+  const CHINESE = ['zhp', 'zhx', 'zh', 'pin'];
+  LS.expand1 = (id) => (id === 'zhx' ? ['zh', 'pin'] : [id]);
+  // concrete slots of a side ('zhx' becomes 'zh' + 'pin')
+  LS.expand = (list) => { const out = []; (list || []).forEach((id) => LS.expand1(id).forEach((x) => { if (out.indexOf(x) < 0) out.push(x); })); return out; };
   LS.SLOTS = SLOTS; LS.CHINESE = CHINESE;
   LS.DEFAULT_Q = ['zhp']; LS.DEFAULT_A = ['ar'];
 
@@ -2393,7 +2402,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     let list = Array.isArray(side) ? side : (side ? [side] : []);
     list = list.filter((k, i) => !!SLOTS[k] && list.indexOf(k) === i);
     const ch = list.filter(LS.isChinese); let zh = null;
-    if (ch.length) zh = ch.indexOf('zhp') >= 0 || (ch.indexOf('zh') >= 0 && ch.indexOf('pin') >= 0) ? 'zhp' : ch[0];
+    if (ch.length) zh = ch.indexOf('zhp') >= 0 ? 'zhp' : (ch.indexOf('zhx') >= 0 || (ch.indexOf('zh') >= 0 && ch.indexOf('pin') >= 0) ? 'zhx' : ch[0]);   // old saves: zh + pin as two question languages = «رمز أو بينيين»
     const out = []; if (zh) out.push(zh); if (list.indexOf('ar') >= 0) out.push('ar'); if (list.indexOf('en') >= 0) out.push('en');
     return out.length ? out : fallback.slice();
   };
@@ -2402,7 +2411,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   // Two slots may face each other only when they share no field.
   LS.compatible = (qs, as) => { const f = LS.fieldsOf(as); return LS.fieldsOf(qs).every((x) => f.indexOf(x) < 0); };
   // Every valid direction for the selection: [[questionSlot, answerSlot], ...]
-  LS.pairs = (qs, as) => { const out = []; (qs || []).forEach((x) => (as || []).forEach((y) => { if (LS.compatible(x, y)) out.push([x, y]); })); return out; };
+  LS.pairs = (qs, as) => { const out = []; const A = LS.expand(as); LS.expand(qs).forEach((x) => A.forEach((y) => { if (LS.compatible(x, y)) out.push([x, y]); })); return out; };
   // Directions that can be asked for THIS item (both texts exist).
   LS.pairsFor = (it, qs, as) => LS.pairs(qs, as).filter((p) => LS.has(it, p[0]) && LS.has(it, p[1]));
   LS.valid = (qs, as) => LS.pairs(qs, as).length > 0;
@@ -2417,7 +2426,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       out.push(['warn', 'لا يوجد اتجاه صالح: لا يمكن أن تكون لغة السؤال هي نفسها لغة الإجابة، ولا أن يحوي السؤال جزءًا من الإجابة (مثل: سؤال «رمز وبينيين» بإجابة «رمز» أو «بينيين»). غيّر الاختيار.']);
     } else {
       out.push(['', 'الاتجاهات الممكنة (' + ps.length + '): ' + ps.map(LS.pairLabel).join(' ، ')]);
-      const unusedQ = (qs || []).filter((x) => !ps.some((p) => p[0] === x)); const unusedA = (as || []).filter((y) => !ps.some((p) => p[1] === y));
+      const unusedQ = (qs || []).filter((x) => !LS.expand1(x).some((c) => ps.some((p) => p[0] === c))); const unusedA = (as || []).filter((y) => !LS.expand1(y).some((c) => ps.some((p) => p[1] === c)));
       if (unusedQ.length || unusedA.length) out.push(['warn', 'اختيارات لن تُستخدم لأنه لا يقابلها اتجاه صالح: ' + unusedQ.map((x) => 'سؤال ' + LS.longLabel(x)).concat(unusedA.map((y) => 'إجابة ' + LS.longLabel(y))).join(' ، ')]);
     }
     return out;
@@ -2434,6 +2443,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   /* ---------- widget (browser only) ----------
      LS.widget(state, onChange) -> { q: Node, a: Node }   state = {q:[...], a:[...]} is edited in place, then onChange() is called.
      Each side: three chips (中文 / عربي / English, several can be on) + the three Chinese forms when Chinese is on. */
+  const FORMS = [
+    ['zhp', 'رمز وبينيين (الافتراضي)', 'السؤال الواحد يظهر فيه الرمز الصيني وتحته البينيين.'],
+    ['zhx', 'رمز أو بينيين', 'بعض الأسئلة يظهر فيها الرمز فقط وبعضها البينيين فقط (بالتناوب).'],
+    ['zh', 'رمز فقط', 'كل الأسئلة بالحروف الصينية وحدها.'],
+    ['pin', 'بينيين فقط', 'كل الأسئلة بالنطق (البينيين) وحده.'],
+  ];
+  LS.FORMS = FORMS;
   LS.widget = (state, onChange) => {
     const h = MC.h;
     const chip = (label, on, onclick, cls) => h('button', { class: 'chip qz-chip' + (on ? ' on' : '') + (cls ? ' ' + cls : ''), type: 'button', onclick }, label);
@@ -2453,10 +2469,17 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         chip((cur.indexOf('en') >= 0 ? '☑ ' : '☐ ') + 'English', cur.indexOf('en') >= 0, () => toggle('en')));
       const wrap = h('div', null, row);
       if (zh) wrap.appendChild(h('div', { class: 'qz-chips qz-form' }, h('span', { class: 'qz-dim', text: 'شكل الصيني:' }),
-        ...[['zhp', 'رمز وبينيين'], ['zh', 'رمز فقط'], ['pin', 'بينيين فقط']].map((f) => chip((zh === f[0] ? '◉ ' : '○ ') + f[1], zh === f[0], () => setForm(f[0]), 'sm'))));
+        ...FORMS.map((f) => { const b = chip((zh === f[0] ? '◉ ' : '○ ') + f[1], zh === f[0], () => setForm(f[0]), 'sm'); b.title = f[2]; return b; })));
       return wrap;
     };
-    return { q: side('q'), a: side('a') };
+    // explanation of the four forms, shown once under both sides while Chinese is used on either side
+    const help = () => {
+      const chosen = [state.q, state.a].map((l) => l.filter(LS.isChinese)[0]).filter(Boolean);
+      if (!chosen.length) return null;
+      return h('div', { class: 'qz-note qz-formhelp' }, h('b', { text: 'أشكال اللغة الصينية:' }),
+        ...FORMS.map((f) => h('div', { class: chosen.indexOf(f[0]) >= 0 ? 'sel' : '' }, h('b', { text: f[1] + ': ' }), f[2])));
+    };
+    return { q: side('q'), a: side('a'), help: help() };
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -3119,11 +3142,12 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         nSent ? h('span', { class: 'qz-dim', text: ' (' + (rows.length - nSent) + ' كلمة، ' + nSent + ' جملة)' }) : null));
       body.appendChild(sec('❓ لغة السؤال', lw.q, h('span', { class: 'qz-dim', text: 'يمكن اختيار أكثر من لغة' })));
       body.appendChild(sec('✍️ لغة الإجابة', lw.a, h('span', { class: 'qz-dim', text: 'يمكن اختيار أكثر من لغة' })));
+      if (lw.help) body.appendChild(lw.help);
       body.appendChild(sec('🧩 أنواع الأسئلة', h('div', { class: 'qz-chips' }, tChips)));
       body.appendChild(sec('🔢 عدد الأسئلة', h('div', { class: 'qz-chips' }, nChips)));
       body.appendChild(sec('📚 اختيار العناصر', h('div', { class: 'qz-chips' }, mChips)));
 
-      if (cfg.a.indexOf('pin') >= 0 && cfg.types.indexOf('write') >= 0) {
+      if ((cfg.a.indexOf('pin') >= 0 || cfg.a.indexOf('zhx') >= 0) && cfg.types.indexOf('write') >= 0) {
         body.appendChild(h('label', { class: 'chk qz-chk' },
           h('input', { type: 'checkbox', checked: cfg.noTones ? true : null, onchange: (e) => { cfg.noTones = e.target.checked; } }),
           'تجاهل النغمات عند كتابة البينيين (yi zi بدل yǐ zi)'));
@@ -3138,8 +3162,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       if (!cfg.types.length) notes.push(['warn', 'اختر نوع سؤال واحدًا على الأقل.']);
       if (cfg.types.indexOf('mc') >= 0 && allViews().filter((x) => c.a.some((sl) => MC.LangSel.has(x, sl))).length < 4) notes.push(['warn', 'الاختيار من متعدد يحتاج 4 عناصر مختلفة على الأقل.']);
       if (nSent > rows.length / 2 && cfg.types.indexOf('write') >= 0) notes.push(['', 'الجمل طويلة: الكتابة تتجاهل علامات الترقيم والمسافات وحالة الأحرف، لكن يُفضَّل الاختيار وصح/خطأ.']);
-      if (cfg.types.indexOf('write') >= 0 && cfg.a.indexOf('pin') >= 0) notes.push(['', 'اكتب البينيين بالعلامات (yǐ zi) أو بالأرقام (yi3 zi0) — المسافات اختيارية، ويُقبل حذف صفر النغمة الخفيفة.']);
-      if (cfg.types.indexOf('write') >= 0 && (cfg.a.indexOf('zh') >= 0 || cfg.a.indexOf('zhp') >= 0)) notes.push(['', 'كتابة الحروف الصينية تحتاج لوحة مفاتيح صينية (Pinyin IME) مفعّلة على جهازك' + (cfg.a.indexOf('zhp') >= 0 ? '، وعند اختيار «رمز وبينيين» كإجابة في سؤال الكتابة يُطلب الرمز فقط.' : '.')]);
+      if (cfg.types.indexOf('write') >= 0 && (cfg.a.indexOf('pin') >= 0 || cfg.a.indexOf('zhx') >= 0)) notes.push(['', 'اكتب البينيين بالعلامات (yǐ zi) أو بالأرقام (yi3 zi0) — المسافات اختيارية، ويُقبل حذف صفر النغمة الخفيفة.']);
+      if (cfg.types.indexOf('write') >= 0 && (cfg.a.indexOf('zh') >= 0 || cfg.a.indexOf('zhp') >= 0 || cfg.a.indexOf('zhx') >= 0)) notes.push(['', 'كتابة الحروف الصينية تحتاج لوحة مفاتيح صينية (Pinyin IME) مفعّلة على جهازك' + (cfg.a.indexOf('zhp') >= 0 ? '، وعند اختيار «رمز وبينيين» كإجابة في سؤال الكتابة يُطلب الرمز فقط.' : '.')]);
       notes.forEach((n) => body.appendChild(h('div', { class: 'qz-note' + (n[0] === 'warn' ? ' warn' : n[0] === 'ok' ? ' ok' : ''), text: n[1] })));
 
       body.appendChild(scoringBox());
@@ -4022,7 +4046,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       '- لغة الإجابة: ' + L.describe(o.a) + '.',
       '- اتجاهات الأسئلة المسموحة (لكل سؤال اتجاه واحد فقط منها، وزّعها بالتساوي قدر الإمكان):',
       ...(pairs.length ? pairs.map((p, i) => '  ' + (i + 1) + '. سؤال بـ' + L.longLabel(p[0]) + ' ← إجابة بـ' + L.longLabel(p[1])) : ['  (لا يوجد اتجاه صالح: غيّر اختيار اللغات)']),
-      '- «الصينية (رمز + بينيين)» تعني كتابة الحروف الصينية ثم البينيين تحتها، و«رمز فقط» الحروف وحدها، و«بينيين فقط» النطق وحده.',
+      '- «الصينية (رمز + بينيين)» تعني كتابة الحروف الصينية ثم البينيين تحتها في السؤال نفسه، و«رمز فقط» الحروف وحدها، و«بينيين فقط» النطق وحده. أما «رمز أو بينيين» فتظهر بعض الأسئلة بالرمز فقط وبعضها بالبينيين فقط (وهو ما تعبّر عنه الاتجاهات أدناه).',
       '- لا يظهر في نص السؤال أي جزء من الإجابة. وإذا كان حقل الاتجاه ناقصًا (—) لعنصر فلا تستخدم هذا الاتجاه لهذا العنصر.',
       ...(hasHomophone ? ['- إذا كان السؤال «بينيين فقط» وكانت عدة عناصر لها النطق نفسه فاقبل أي إجابة صحيحة منها.'] : []),
       '- عدد الأسئلة: ' + o.count + (o.count > 3 ? '، موزّعة بالتساوي على الدروس المذكورة.' : '.'),
@@ -4065,6 +4089,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       opts.append(
         sec('❓ لغة السؤال (يمكن اختيار أكثر من لغة)', lw.q),
         sec('✍️ لغة الإجابة (يمكن اختيار أكثر من لغة)', lw.a),
+        ...(lw.help ? [lw.help] : []),
         ...notes.map((n) => h('div', { class: 'qz-note' + (n[0] === 'warn' ? ' warn' : n[0] === 'ok' ? ' ok' : ''), text: n[1] })),
         sec('🧩 أنواع الأسئلة', h('div', { class: 'qz-chips' }, ...TYPES.map((t) => chip((o.types.indexOf(t.id) >= 0 ? '☑ ' : '☐ ') + t.label, o.types.indexOf(t.id) >= 0, () => set({ types: o.types.indexOf(t.id) >= 0 ? o.types.filter((x) => x !== t.id) : o.types.concat([t.id]) }))))),
         sec('🔢 عدد الأسئلة', h('div', { class: 'qz-chips' }, ...AIQ.COUNTS.map((n) => chip(String(n), o.count === n, () => set({ count: n }))))),

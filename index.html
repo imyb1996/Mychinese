@@ -526,6 +526,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .qz-prompt { padding: 16px 40px; }
 }
 
+.qz-chip.sm { min-height: 28px; padding: 2px 10px; font-size: 12.5px; }
+.qz-form { margin-top: 6px; align-items: center; padding-inline-start: 8px; border-inline-start: 3px solid var(--pu); }
+.qz-zhp { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.25; }
+.qz-zsub { font-size: .55em; opacity: .85; }
+.qz-prompt .qz-zsub { font-size: calc(22px * var(--f-all) * var(--f-pin)); opacity: 1; color: var(--pu); }
+.qz-prompt.long .qz-zsub { font-size: calc(15px * var(--f-all) * var(--f-pin)); }
+.qz-choice .qz-zsub { font-size: .6em; }
+
 /* ===== print.css ===== */
 /* ============================================================
    print.css — print dialog (.pr-o*, .pr-wrap, .pr-pv*) and the printable document (.pr-*, #mc-print-root).
@@ -2332,6 +2340,126 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   };
 })(window);
 
+/* ===== langsel.js ===== */
+/* ============================================================
+   langsel.js — question / answer language choice shared by the quizzes and the AI-quiz prompt.
+
+   Three languages can be picked, on the question side AND on the answer side (several at once):
+        中文 (Chinese)   عربي (Arabic)   English
+   The Chinese choice has three forms:  «رمز وبينيين» (default, slot 'zhp')  /  «رمز فقط» ('zh')  /  «بينيين فقط» ('pin').
+   So a side is a list of SLOTS such as ['zhp','ar'] (at most one Chinese slot per side).
+
+   Every question uses ONE direction = one question slot + one answer slot, chosen among the selected ones.
+   A direction is valid only when its two slots share no field: the question must never contain the answer.
+       ar → zhp ✔   zh → pin ✔   pin → zh ✔   zhp → zh ✘ (the characters are in the question)   ar → ar ✘
+   Pure functions (Node-testable) + a small chips widget used by both screens.
+   ============================================================ */
+(function (g) {
+  'use strict';
+  const MC = g.MC = g.MC || {};
+  const LS = MC.LangSel = {};
+
+  const SLOTS = {
+    zhp: { fields: ['zh', 'pin'], main: 'zh', label: '中文 رمز + بينيين', long: 'الصينية (رمز + بينيين)' },
+    zh: { fields: ['zh'], main: 'zh', label: '中文 رمز فقط', long: 'الصينية (رمز فقط)' },
+    pin: { fields: ['pin'], main: 'pin', label: 'بينيين فقط', long: 'الصينية (بينيين فقط)' },
+    ar: { fields: ['ar'], main: 'ar', label: 'عربي', long: 'العربية' },
+    en: { fields: ['en'], main: 'en', label: 'English', long: 'الإنجليزية' },
+  };
+  const CHINESE = ['zhp', 'zh', 'pin'];
+  LS.SLOTS = SLOTS; LS.CHINESE = CHINESE;
+  LS.DEFAULT_Q = ['zhp']; LS.DEFAULT_A = ['ar'];
+
+  const txt = (it, k) => String((it && it[k]) == null ? '' : it[k]).trim();
+  LS.isChinese = (id) => CHINESE.indexOf(id) >= 0;
+  LS.fieldsOf = (id) => (SLOTS[id] ? SLOTS[id].fields.slice() : []);
+  LS.mainOf = (id) => (SLOTS[id] ? SLOTS[id].main : id);
+  LS.label = (id) => (SLOTS[id] ? SLOTS[id].label : String(id));
+  LS.longLabel = (id) => (SLOTS[id] ? SLOTS[id].long : String(id));
+  LS.describe = (ids) => (ids || []).map(LS.longLabel).join(' + ');
+
+  // Has this item the text a slot needs?  (a slot with characters needs the characters; the pinyin of «رمز وبينيين» is shown when it exists)
+  LS.has = (it, id) => !!SLOTS[id] && !!txt(it, SLOTS[id].main);
+  // What the learner sees for a slot (two lines for «رمز وبينيين»).
+  LS.display = (it, id) => {
+    if (!SLOTS[id]) return '';
+    if (id === 'zhp') return txt(it, 'pin') ? txt(it, 'zh') + '\n' + txt(it, 'pin') : txt(it, 'zh');
+    return txt(it, SLOTS[id].main);
+  };
+
+  // Accepts the new form (array of slot ids) and the old forms (a single field key, or a list of field keys where zh and pin were separate).
+  // Result: valid ids only, at most ONE Chinese slot, stable order (Chinese, Arabic, English).
+  LS.normSide = (side, fallback) => {
+    let list = Array.isArray(side) ? side : (side ? [side] : []);
+    list = list.filter((k, i) => !!SLOTS[k] && list.indexOf(k) === i);
+    const ch = list.filter(LS.isChinese); let zh = null;
+    if (ch.length) zh = ch.indexOf('zhp') >= 0 || (ch.indexOf('zh') >= 0 && ch.indexOf('pin') >= 0) ? 'zhp' : ch[0];
+    const out = []; if (zh) out.push(zh); if (list.indexOf('ar') >= 0) out.push('ar'); if (list.indexOf('en') >= 0) out.push('en');
+    return out.length ? out : fallback.slice();
+  };
+  LS.norm = (q, a) => ({ q: LS.normSide(q, LS.DEFAULT_Q), a: LS.normSide(a, LS.DEFAULT_A) });
+
+  // Two slots may face each other only when they share no field.
+  LS.compatible = (qs, as) => { const f = LS.fieldsOf(as); return LS.fieldsOf(qs).every((x) => f.indexOf(x) < 0); };
+  // Every valid direction for the selection: [[questionSlot, answerSlot], ...]
+  LS.pairs = (qs, as) => { const out = []; (qs || []).forEach((x) => (as || []).forEach((y) => { if (LS.compatible(x, y)) out.push([x, y]); })); return out; };
+  // Directions that can be asked for THIS item (both texts exist).
+  LS.pairsFor = (it, qs, as) => LS.pairs(qs, as).filter((p) => LS.has(it, p[0]) && LS.has(it, p[1]));
+  LS.valid = (qs, as) => LS.pairs(qs, as).length > 0;
+  LS.pairLabel = (p) => LS.longLabel(p[0]) + ' ← ' + LS.longLabel(p[1]);
+  // The fields (zh/pin/ar/en) that appear in any of the directions: the data columns the AI prompt needs.
+  LS.usedFields = (qs, as) => { const s = new Set(); LS.pairs(qs, as).forEach((p) => { LS.fieldsOf(p[0]).concat(LS.fieldsOf(p[1])).forEach((f) => s.add(f)); }); return ['zh', 'pin', 'ar', 'en'].filter((f) => s.has(f)); };
+
+  // Messages for the screens: [['warn'|'ok'|'', text], ...]
+  LS.notes = (qs, as) => {
+    const out = []; const ps = LS.pairs(qs, as);
+    if (!ps.length) {
+      out.push(['warn', 'لا يوجد اتجاه صالح: لا يمكن أن تكون لغة السؤال هي نفسها لغة الإجابة، ولا أن يحوي السؤال جزءًا من الإجابة (مثل: سؤال «رمز وبينيين» بإجابة «رمز» أو «بينيين»). غيّر الاختيار.']);
+    } else {
+      out.push(['', 'الاتجاهات الممكنة (' + ps.length + '): ' + ps.map(LS.pairLabel).join(' ، ')]);
+      const unusedQ = (qs || []).filter((x) => !ps.some((p) => p[0] === x)); const unusedA = (as || []).filter((y) => !ps.some((p) => p[1] === y));
+      if (unusedQ.length || unusedA.length) out.push(['warn', 'اختيارات لن تُستخدم لأنه لا يقابلها اتجاه صالح: ' + unusedQ.map((x) => 'سؤال ' + LS.longLabel(x)).concat(unusedA.map((y) => 'إجابة ' + LS.longLabel(y))).join(' ، ')]);
+    }
+    return out;
+  };
+
+  // Balanced choice of a direction for one item: the least used one so far (ties: random).
+  LS.pick = (list, counts, rng) => {
+    if (!list.length) return null; rng = rng || Math.random;
+    const key = (p) => p[0] + '>' + p[1]; let min = Infinity; list.forEach((p) => { min = Math.min(min, counts[key(p)] || 0); });
+    const best = list.filter((p) => (counts[key(p)] || 0) === min); const p = best[Math.floor(rng() * best.length)];
+    counts[key(p)] = (counts[key(p)] || 0) + 1; return p;
+  };
+
+  /* ---------- widget (browser only) ----------
+     LS.widget(state, onChange) -> { q: Node, a: Node }   state = {q:[...], a:[...]} is edited in place, then onChange() is called.
+     Each side: three chips (中文 / عربي / English, several can be on) + the three Chinese forms when Chinese is on. */
+  LS.widget = (state, onChange) => {
+    const h = MC.h;
+    const chip = (label, on, onclick, cls) => h('button', { class: 'chip qz-chip' + (on ? ' on' : '') + (cls ? ' ' + cls : ''), type: 'button', onclick }, label);
+    const side = (key) => {
+      const cur = state[key]; const zh = cur.filter(LS.isChinese)[0] || null;
+      const toggle = (lang) => {
+        let list = cur.slice();
+        if (lang === 'zh') list = zh ? list.filter((x) => !LS.isChinese(x)) : list.concat(['zhp']);
+        else list = list.indexOf(lang) >= 0 ? list.filter((x) => x !== lang) : list.concat([lang]);
+        if (!list.length) { if (MC.toast) MC.toast('يجب اختيار لغة واحدة على الأقل', 'err'); return; }
+        state[key] = LS.normSide(list, cur); onChange();
+      };
+      const setForm = (id) => { state[key] = LS.normSide(cur.filter((x) => !LS.isChinese(x)).concat([id]), cur); onChange(); };
+      const row = h('div', { class: 'qz-chips' },
+        chip((zh ? '☑ ' : '☐ ') + '中文', !!zh, () => toggle('zh')),
+        chip((cur.indexOf('ar') >= 0 ? '☑ ' : '☐ ') + 'عربي', cur.indexOf('ar') >= 0, () => toggle('ar')),
+        chip((cur.indexOf('en') >= 0 ? '☑ ' : '☐ ') + 'English', cur.indexOf('en') >= 0, () => toggle('en')));
+      const wrap = h('div', null, row);
+      if (zh) wrap.appendChild(h('div', { class: 'qz-chips qz-form' }, h('span', { class: 'qz-dim', text: 'شكل الصيني:' }),
+        ...[['zhp', 'رمز وبينيين'], ['zh', 'رمز فقط'], ['pin', 'بينيين فقط']].map((f) => chip((zh === f[0] ? '◉ ' : '○ ') + f[1], zh === f[0], () => setForm(f[0]), 'sm'))));
+      return wrap;
+    };
+    return { q: side('q'), a: side('a') };
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /* ===== quiz.js ===== */
 /* ============================================================
    quiz.js — quizzes + browser-side scores.
@@ -2654,12 +2782,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
      ===================================================================== */
   function _normCfg(c) {
     c = Object.assign({}, c || {});
-    const valid = (k) => LANG_KEYS.indexOf(k) >= 0;
-    c.a = valid(c.a) ? c.a : 'ar';
-    let q = Array.isArray(c.q) ? c.q : (c.q ? [c.q] : ['zh']);
-    q = q.filter((k, i) => valid(k) && k !== c.a && q.indexOf(k) === i);
-    if (!q.length) q = [c.a === 'zh' ? 'ar' : 'zh'];
-    c.q = q;
+    // question side / answer side = lists of language slots (zhp = رمز وبينيين, zh = رمز فقط, pin = بينيين فقط, ar, en); see langsel.js
+    const ln = MC.LangSel.norm(c.q, c.a); c.q = ln.q; c.a = ln.a;
     c.types = (Array.isArray(c.types) ? c.types : ['mc']).filter((t, i, a) => TYPES.indexOf(t) >= 0 && a.indexOf(t) === i);
     c.count = Number(c.count) > 0 ? Math.floor(c.count) : 0;
     c.mode = MODES.indexOf(c.mode) >= 0 ? c.mode : 'random';
@@ -2667,7 +2791,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     c.rng = typeof c.rng === 'function' ? c.rng : Math.random;
     return c;
   }
-  const _eligible = (it, c) => !!txt(it, c.a) && c.q.some((k) => k !== c.a && !!txt(it, k));
+  // an item can be asked when at least one valid direction (question slot -> answer slot) has text on both sides
+  const _eligible = (it, c) => MC.LangSel.pairsFor(it, c.q, c.a).length > 0;
 
   /* Which items to ask, in which order. cfg: normalised config (+ optional cfg.info(id)->{s,n,t}|null). */
   function _selectItems(rows, cfg) {
@@ -2714,41 +2839,51 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     return out;
   }
 
-  function buildQuestion(it, q, type, c, pool, rng) {
+  // pair = [question slot, answer slot]. q / a keep the FIELD of each side (zh|pin|ar|en) for comparing and styling; qSlot / aSlot keep what is shown.
+  function buildQuestion(it, pair, type, c, pool, rng) {
+    const LS = MC.LangSel; const qs = pair[0]; const as = pair[1]; const q = LS.mainOf(qs); const a = LS.mainOf(as);
     const base = {
-      id: it.id, item: it, q, a: c.a, type, prompt: it[q], right: it[c.a], kind: it.kind,
-      hintable: q === 'zh' && c.a !== 'pin' && !!txt(it, 'pin'),
+      id: it.id, item: it, q, a, qSlot: qs, aSlot: as, type, prompt: it[q], right: it[a], kind: it.kind,
+      hintable: qs === 'zh' && LS.fieldsOf(as).indexOf('pin') < 0 && !!txt(it, 'pin'),
       base: c.getScore ? c.getScore(it.id) : MC.Scores.get(it.id),
       done: false, hint: false, input: '', resp: null, outcome: null, delta: 0,
     };
     const dopt = { qLang: q, noTones: c.noTones };
-    if (type === 'write') return base;
+    if (type === 'write') {
+      // other items with the SAME prompt (same pinyin / duplicated texts) have other right answers: accept them too
+      const kopt = { noTones: c.noTones }; const keyOf = (x, l) => cmpKey(x[l], l, Object.assign({ sentence: x.kind === 'sentence' }, kopt));
+      const qk = keyOf(it, q); const mine = keyOf(it, a); const alts = []; const seenA = new Set([mine]);
+      (pool || []).forEach((x) => { if (x.id === it.id || !txt(x, a) || !txt(x, q) || keyOf(x, q) !== qk) return; const k = keyOf(x, a); if (k && !seenA.has(k)) { seenA.add(k); alts.push(x[a]); } });
+      base.alts = alts;
+      return base;
+    }
     if (type === 'mc') {
-      const ds = _pickDistractors(it, c.a, 3, pool, rng, dopt);
+      const ds = _pickDistractors(it, a, 3, pool, rng, dopt);
       if (ds.length < 3) return null;
-      base.opts = shuffle([{ text: it[c.a], correct: true }].concat(ds.map((x) => ({ text: x[c.a], correct: false }))), rng);
+      base.opts = shuffle([{ text: it[a], item: it, correct: true }].concat(ds.map((x) => ({ text: x[a], item: x, correct: false }))), rng);
       return base;
     }
     // tf: half true statements, half false (a distractor's text shown)
-    let truth = rng() < 0.5; let shown = it[c.a];
-    if (!truth) { const ds = _pickDistractors(it, c.a, 1, pool, rng, dopt); if (ds.length) shown = ds[0][c.a]; else truth = true; }
-    base.truth = truth; base.shown = shown;
+    let truth = rng() < 0.5; let shown = it[a]; let shownItem = it;
+    if (!truth) { const ds = _pickDistractors(it, a, 1, pool, rng, dopt); if (ds.length) { shown = ds[0][a]; shownItem = ds[0]; } else truth = true; }
+    base.truth = truth; base.shown = shown; base.shownItem = shownItem;
     return base;
   }
 
-  /* rows: views. cfg: {q:[langs], a, types:[...], count (0=all), mode, noTones, rng?, pool?, info?, getScore?}
+  /* rows: views. cfg: {q:[slots], a:[slots], types:[...], count (0=all), mode, noTones, rng?, pool?, info?, getScore?}
      -> {questions:[...], dropped:[items for which no question could be built], eligible:n} */
   function _makeQuestions(rows, cfg) {
     const c = _normCfg(cfg); c.info = cfg && cfg.info; c.getScore = cfg && cfg.getScore;
     const pool = (cfg && cfg.pool) || MC.query({});
     const items = _selectItems(rows, Object.assign({}, c, { info: c.info }));
-    const questions = []; const dropped = [];
+    const questions = []; const dropped = []; const counts = {};
     items.forEach((it) => {
-      const qs = c.q.filter((k) => k !== c.a && txt(it, k));
-      const q = qs[Math.floor(c.rng() * qs.length)];
+      // the directions are used evenly: each question takes the least used valid direction for this item
+      const all = MC.LangSel.pairsFor(it, c.q, c.a); const first = MC.LangSel.pick(all, counts, c.rng);
+      const pairs = first ? [first].concat(all.filter((p) => p !== first)) : [];
       let made = null;
       const order = shuffle(c.types, c.rng);
-      for (let i = 0; i < order.length && !made; i++) made = buildQuestion(it, q, order[i], c, pool, c.rng);
+      for (let pi = 0; pi < pairs.length && !made; pi++) for (let i = 0; i < order.length && !made; i++) made = buildQuestion(it, pairs[pi], order[i], c, pool, c.rng);
       if (made) questions.push(made); else dropped.push(it);
     });
     return { questions, dropped, eligible: (rows || []).filter((it) => _eligible(it, c)).length };
@@ -2759,7 +2894,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     o = o || {};
     if (q.type === 'mc') return !!(q.opts[resp] && q.opts[resp].correct);
     if (q.type === 'tf') return resp === q.truth;
-    return _checkAnswer(q.right, resp, q.a, { noTones: !!o.noTones, sentence: q.kind === 'sentence' });
+    const co = { noTones: !!o.noTones, sentence: q.kind === 'sentence' };
+    return [q.right].concat(q.alts || []).some((r) => _checkAnswer(r, resp, q.a, co));
   }
   // outcome: 'ok' | 'bad' | 'dk'. A used hint costs 1 point of a correct answer.
   function _deltaFor(type, outcome, hint, st) {
@@ -2832,6 +2968,12 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   function langSpan(lang, text, cls) {
     return h('span', { class: 't-' + lang + (cls ? ' ' + cls : ''), dir: dirOf(lang), text: String(text == null ? '' : text) });
   }
+  // what a slot shows for an item: «رمز وبينيين» = characters with the pinyin under them, anything else = that field
+  function slotView(slot, it, cls) {
+    if (slot === 'zhp') return h('span', { class: 'qz-zhp' + (cls ? ' ' + cls : '') }, langSpan('zh', it.zh), txt(it, 'pin') ? langSpan('pin', it.pin, 'qz-zsub') : null);
+    return langSpan(MC.LangSel.mainOf(slot), it[MC.LangSel.mainOf(slot)], cls);
+  }
+  const dirLabel = (q) => MC.LangSel.label(q.qSlot || q.q) + ' ← ' + MC.LangSel.label(q.aSlot || q.a);
   function speakBtn(text, cls) {
     if (!canSpeak() || !text) return null;
     return h('button', { class: 'btn sm ico qz-spk' + (cls ? ' ' + cls : ''), type: 'button', title: 'نطق', 'aria-label': 'نطق', text: '🔊', onclick: (e) => { e.stopPropagation(); MC.speak(text); } });
@@ -2847,10 +2989,10 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const sv = (qLoad().setup) || {};
     const typesSaved = sent ? sv.typesSentence : sv.typesWord;
     const cfg = {
-      q: ['zh'], a: 'ar', types: sent ? ['mc', 'tf'] : ['write', 'mc', 'tf'], count: 10, mode: 'random', noTones: false,
+      q: MC.LangSel.DEFAULT_Q.slice(), a: MC.LangSel.DEFAULT_A.slice(), types: sent ? ['mc', 'tf'] : ['write', 'mc', 'tf'], count: 10, mode: 'random', noTones: false,
     };
-    if (sv.a && LANG_KEYS.indexOf(sv.a) >= 0) cfg.a = sv.a;
-    if (Array.isArray(sv.q) && sv.q.length) cfg.q = sv.q;
+    if (sv.a) cfg.a = sv.a;          // arrays of slots (older saves: a single field / a list of fields: migrated by _normCfg)
+    if (sv.q) cfg.q = sv.q;
     if (Array.isArray(typesSaved)) cfg.types = typesSaved;
     if (sv.count != null) cfg.count = sv.count;
     if (MODES.indexOf(sv.mode) >= 0) cfg.mode = sv.mode;
@@ -2860,7 +3002,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
   function saveSetup(cfg) {
     const q = qLoad(); const sv = q.setup = q.setup || {};
-    sv.q = cfg.q.slice(); sv.a = cfg.a; sv.count = cfg.count; sv.mode = cfg.mode; sv.noTones = !!cfg.noTones;
+    sv.q = cfg.q.slice(); sv.a = cfg.a.slice(); sv.count = cfg.count; sv.mode = cfg.mode; sv.noTones = !!cfg.noTones;
     if (cfg.sentenceSet) sv.typesSentence = cfg.types.slice(); else sv.typesWord = cfg.types.slice();
     qSave();
   }
@@ -2965,20 +3107,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 
       const sec = (label, content, extra) => h('div', { class: 'qz-sec' }, h('div', { class: 'qz-lab' }, label, extra || null), content);
 
-      // question languages (multi)
-      const qChips = MC.LANGS.map((l) => {
-        const isA = l.key === cfg.a; const on = cfg.q.indexOf(l.key) >= 0 && !isA;
-        return chip((on ? '☑ ' : '☐ ') + l.label + (isA ? ' (= الإجابة)' : ''), on, () => {
-          if (isA) return;
-          if (on) { if (cfg.q.length === 1) { MC.toast('يجب اختيار لغة سؤال واحدة على الأقل', 'err'); return; } cfg.q = cfg.q.filter((k) => k !== l.key); } else cfg.q = cfg.q.concat([l.key]);
-          renderSetup();
-        }, isA ? 'dis' : '');
-      });
-      const aChips = MC.LANGS.map((l) => chip((cfg.a === l.key ? '◉ ' : '○ ') + l.label, cfg.a === l.key, () => {
-        cfg.a = l.key; cfg.q = cfg.q.filter((k) => k !== l.key);
-        if (!cfg.q.length) cfg.q = [l.key === 'zh' ? 'ar' : 'zh'];
-        renderSetup();
-      }));
+      // question / answer languages: 中文 (3 forms) / عربي / English, several on each side; a direction never has the same language on both sides
+      const lw = MC.LangSel.widget(cfg, renderSetup);
       const tChips = TYPES.map((t) => chip((cfg.types.indexOf(t) >= 0 ? '☑ ' : '☐ ') + TYPE_LABEL[t], cfg.types.indexOf(t) >= 0, () => {
         cfg.types = cfg.types.indexOf(t) >= 0 ? cfg.types.filter((x) => x !== t) : cfg.types.concat([t]); renderSetup();
       }));
@@ -2987,32 +3117,35 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 
       body.appendChild(h('div', { class: 'qz-sum' }, h('b', { text: String(rows.length) }), ' عنصرًا مُحددًا',
         nSent ? h('span', { class: 'qz-dim', text: ' (' + (rows.length - nSent) + ' كلمة، ' + nSent + ' جملة)' }) : null));
-      body.appendChild(sec('❓ لغة السؤال', h('div', { class: 'qz-chips' }, qChips), h('span', { class: 'qz-dim', text: 'يمكن اختيار أكثر من لغة' })));
-      body.appendChild(sec('✍️ لغة الإجابة', h('div', { class: 'qz-chips' }, aChips)));
+      body.appendChild(sec('❓ لغة السؤال', lw.q, h('span', { class: 'qz-dim', text: 'يمكن اختيار أكثر من لغة' })));
+      body.appendChild(sec('✍️ لغة الإجابة', lw.a, h('span', { class: 'qz-dim', text: 'يمكن اختيار أكثر من لغة' })));
       body.appendChild(sec('🧩 أنواع الأسئلة', h('div', { class: 'qz-chips' }, tChips)));
       body.appendChild(sec('🔢 عدد الأسئلة', h('div', { class: 'qz-chips' }, nChips)));
       body.appendChild(sec('📚 اختيار العناصر', h('div', { class: 'qz-chips' }, mChips)));
 
-      if (cfg.a === 'pin' && cfg.types.indexOf('write') >= 0) {
+      if (cfg.a.indexOf('pin') >= 0 && cfg.types.indexOf('write') >= 0) {
         body.appendChild(h('label', { class: 'chk qz-chk' },
           h('input', { type: 'checkbox', checked: cfg.noTones ? true : null, onchange: (e) => { cfg.noTones = e.target.checked; } }),
           'تجاهل النغمات عند كتابة البينيين (yi zi بدل yǐ zi)'));
       }
       // notes
       const notes = [];
+      const dirOk = MC.LangSel.valid(c.q, c.a);
+      MC.LangSel.notes(c.q, c.a).forEach((n) => notes.push(n));
+      if (dirOk && elig.length < rows.length) notes.push(['warn', 'يُستبعد ' + (rows.length - elig.length) + ' عنصرًا لأنه ينقصه نص في اللغات المختارة (مثل بينيين أو إنجليزي فارغ).']);
       if (nq > 0) notes.push(['ok', 'سيُطرح ' + nq + ' سؤالاً من ' + avail + ' عنصرًا صالحًا.']);
-      else notes.push(['warn', cfg.mode === 'untested' && elig.length ? 'كل العناصر المحددة سبق اختبارها.' : 'لا توجد عناصر صالحة: تأكد أن العناصر فيها نص بلغة الإجابة وبلغة السؤال.']);
+      else if (dirOk) notes.push(['warn', cfg.mode === 'untested' && elig.length ? 'كل العناصر المحددة سبق اختبارها.' : 'لا توجد عناصر صالحة: تأكد أن العناصر فيها نص بلغة الإجابة وبلغة السؤال.']);
       if (!cfg.types.length) notes.push(['warn', 'اختر نوع سؤال واحدًا على الأقل.']);
-      if (cfg.types.indexOf('mc') >= 0 && allViews().filter((x) => txt(x, cfg.a)).length < 4) notes.push(['warn', 'الاختيار من متعدد يحتاج 4 عناصر مختلفة على الأقل.']);
+      if (cfg.types.indexOf('mc') >= 0 && allViews().filter((x) => c.a.some((sl) => MC.LangSel.has(x, sl))).length < 4) notes.push(['warn', 'الاختيار من متعدد يحتاج 4 عناصر مختلفة على الأقل.']);
       if (nSent > rows.length / 2 && cfg.types.indexOf('write') >= 0) notes.push(['', 'الجمل طويلة: الكتابة تتجاهل علامات الترقيم والمسافات وحالة الأحرف، لكن يُفضَّل الاختيار وصح/خطأ.']);
-      if (cfg.types.indexOf('write') >= 0 && cfg.a === 'pin') notes.push(['', 'اكتب البينيين بالعلامات (yǐ zi) أو بالأرقام (yi3 zi0) — المسافات اختيارية، ويُقبل حذف صفر النغمة الخفيفة.']);
-      if (cfg.types.indexOf('write') >= 0 && cfg.a === 'zh') notes.push(['', 'كتابة الحروف الصينية تحتاج لوحة مفاتيح صينية (Pinyin IME) مفعّلة على جهازك.']);
+      if (cfg.types.indexOf('write') >= 0 && cfg.a.indexOf('pin') >= 0) notes.push(['', 'اكتب البينيين بالعلامات (yǐ zi) أو بالأرقام (yi3 zi0) — المسافات اختيارية، ويُقبل حذف صفر النغمة الخفيفة.']);
+      if (cfg.types.indexOf('write') >= 0 && (cfg.a.indexOf('zh') >= 0 || cfg.a.indexOf('zhp') >= 0)) notes.push(['', 'كتابة الحروف الصينية تحتاج لوحة مفاتيح صينية (Pinyin IME) مفعّلة على جهازك' + (cfg.a.indexOf('zhp') >= 0 ? '، وعند اختيار «رمز وبينيين» كإجابة في سؤال الكتابة يُطلب الرمز فقط.' : '.')]);
       notes.forEach((n) => body.appendChild(h('div', { class: 'qz-note' + (n[0] === 'warn' ? ' warn' : n[0] === 'ok' ? ' ok' : ''), text: n[1] })));
 
       body.appendChild(scoringBox());
 
       footerSet([
-        { label: '▶ ابدأ الاختبار', cls: 'pri', disabled: !(nq > 0 && cfg.types.length), onClick: () => { saveSetup(cfg); startSession(rows, Object.assign({}, cfg)); } },
+        { label: '▶ ابدأ الاختبار', cls: 'pri', disabled: !(nq > 0 && cfg.types.length && dirOk), onClick: () => { saveSetup(cfg); startSession(rows, Object.assign({}, cfg)); } },
         { label: '📊 الإحصائيات', onClick: () => openStats(rows) },
         { label: 'إلغاء', cls: 'ghost', onClick: () => m.close() },
       ]);
@@ -3055,11 +3188,11 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         h('span', { class: 'qz-sp' }),
         h('button', { class: 'btn sm ghost', type: 'button', text: 'إنهاء', onclick: quit })));
       body.appendChild(h('div', { class: 'qz-bar' }, h('i', { style: { width: Math.round((s.i + (q.done ? 1 : 0)) * 100 / n) + '%' } })));
-      body.appendChild(h('div', { class: 'qz-dir', text: LANG_LABEL[q.q] + ' ← ' + LANG_LABEL[q.a] + ' · ' + TYPE_SHORT[q.type] }));
+      body.appendChild(h('div', { class: 'qz-dir', text: dirLabel(q) + ' · ' + TYPE_SHORT[q.type] }));
 
       const long = q.kind === 'sentence' || String(q.prompt).length > 12;
-      const showSpk = q.done || q.q === 'zh' || (q.q === 'pin' && q.a !== 'zh');
-      body.appendChild(h('div', { class: 'qz-prompt' + (long ? ' long' : '') }, langSpan(q.q, q.prompt), showSpk ? speakBtn(q.item.zh, 'qz-spk-p') : null));
+      const showSpk = q.done || q.q === 'zh' || (q.q === 'pin' && q.a !== 'zh');   // q.q = field of the prompt
+      body.appendChild(h('div', { class: 'qz-prompt' + (long ? ' long' : '') }, slotView(q.qSlot || q.q, q.item), showSpk ? speakBtn(q.item.zh, 'qz-spk-p') : null));
 
       if (q.hintable && !q.done) {
         body.appendChild(q.hint
@@ -3071,11 +3204,11 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       if (q.type === 'mc') {
         body.appendChild(h('div', { class: 'qz-ans' }, q.opts.map((o, i) => {
           let cls = ''; if (q.done) { if (o.correct) cls = ' ok'; else if (i === q.resp) cls = ' bad'; }
-          return h('button', { class: 'qz-choice' + cls, type: 'button', disabled: q.done ? true : null, onclick: () => answer(i) }, h('span', { class: 'qz-k', text: String(i + 1) }), langSpan(q.a, o.text));
+          return h('button', { class: 'qz-choice' + cls, type: 'button', disabled: q.done ? true : null, onclick: () => answer(i) }, h('span', { class: 'qz-k', text: String(i + 1) }), slotView(q.aSlot || q.a, o.item));
         })));
       } else if (q.type === 'tf') {
         body.appendChild(h('div', { class: 'qz-tfq', text: 'هل هذه هي الترجمة / الصيغة الصحيحة؟' }));
-        body.appendChild(h('div', { class: 'qz-stmt' + (q.shown.length > 14 ? ' long' : '') }, langSpan(q.a, q.shown), q.a === 'zh' ? speakBtn(q.shown, 'qz-spk-p') : null));
+        body.appendChild(h('div', { class: 'qz-stmt' + (q.shown.length > 14 ? ' long' : '') }, slotView(q.aSlot || q.a, q.shownItem || q.item), q.a === 'zh' ? speakBtn(q.shown, 'qz-spk-p') : null));
         body.appendChild(h('div', { class: 'qz-ans qz-tf' }, [[true, '✓ صح', '1'], [false, '✗ خطأ', '2']].map((x) => {
           let cls = ''; if (q.done) { if (x[0] === q.truth) cls = ' ok'; else if (x[0] === q.resp) cls = ' bad'; }
           return h('button', { class: 'qz-choice' + cls, type: 'button', disabled: q.done ? true : null, onclick: () => answer(x[0]) }, h('span', { class: 'qz-k', text: x[2] }), x[1]);
@@ -3118,7 +3251,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         h('b', { text: ok ? '✅ إجابة صحيحة' : q.outcome === 'dk' ? '🤷 لا أعرف' : '❌ إجابة خاطئة' }),
         h('b', { class: 'qz-delta', dir: 'ltr', text: fmt(q.delta) }),
         h('span', { class: 'qz-dim', text: '(الدرجة: ' + fmt(q.base) + ' ← ' + fmt(after) + ')' }));
-      const ans = (!ok || q.type === 'write') ? h('div', { class: 'qz-right' }, 'الإجابة الصحيحة: ', langSpan(q.a, q.right, 'qz-b'),
+      const ans = (!ok || q.type === 'write') ? h('div', { class: 'qz-right' }, 'الإجابة الصحيحة: ', slotView(q.aSlot || q.a, q.item, 'qz-b'),
+        (q.alts && q.alts.length) ? h('span', { class: 'qz-dim', text: ' (أو: ' + q.alts.join('، ') + ')' }) : null,
         q.a === 'pin' ? h('span', { class: 'qz-dim', dir: 'ltr', text: ' (' + pyNum(q.right) + ')' }) : null) : null;
       const typed = q.type === 'write' && !ok && q.outcome === 'bad' && q.input ? h('div', { class: 'qz-typed' }, 'كتبت: ', h('span', { dir: 'auto', text: q.input })) : null;
       return h('div', { class: 'qz-fb ' + (ok ? 'ok' : q.outcome === 'dk' ? 'dk' : 'bad') }, head, ans, typed, allLangsLine(q.item, true));
@@ -3144,7 +3278,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
           const now = s.after && s.after[q.id] != null ? s.after[q.id] : MC.Scores.get(q.id);
           return h('div', { class: 'qz-mrow' }, scoreBadge(now),
             h('div', { class: 'qz-mt' },
-              langSpan(q.q, q.prompt), h('span', { class: 'qz-ar', text: ' ← ' }), langSpan(q.a, q.right, 'qz-b'),
+              slotView(q.qSlot || q.q, q.item), h('span', { class: 'qz-ar', text: ' ← ' }), slotView(q.aSlot || q.a, q.item, 'qz-b'),
               q.type === 'write' && q.input && q.outcome === 'bad' ? h('div', { class: 'qz-typed' }, 'كتبت: ', h('span', { dir: 'auto', text: q.input })) : null),
             speakBtn(q.item.zh));
         })));
@@ -3170,9 +3304,9 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       m.setTitle('📖 مراجعة الأخطاء');
       const body = m.body; clear(body);
       body.appendChild(h('div', { class: 'qz-rv-list' }, sum.mistakes.map((q) => h('div', { class: 'qz-rv' },
-        h('div', { class: 'qz-rv-h' }, h('span', { class: 'qz-dim', text: LANG_LABEL[q.q] + ' ← ' + LANG_LABEL[q.a] }), scoreBadge(MC.Scores.get(q.id))),
-        h('div', { class: 'qz-rv-q' }, langSpan(q.q, q.prompt), speakBtn(q.item.zh)),
-        h('div', { class: 'qz-right' }, 'الإجابة الصحيحة: ', langSpan(q.a, q.right, 'qz-b')),
+        h('div', { class: 'qz-rv-h' }, h('span', { class: 'qz-dim', text: dirLabel(q) }), scoreBadge(MC.Scores.get(q.id))),
+        h('div', { class: 'qz-rv-q' }, slotView(q.qSlot || q.q, q.item), speakBtn(q.item.zh)),
+        h('div', { class: 'qz-right' }, 'الإجابة الصحيحة: ', slotView(q.aSlot || q.a, q.item, 'qz-b')),
         q.type === 'write' && q.input ? h('div', { class: 'qz-typed' }, 'كتبت: ', h('span', { dir: 'auto', text: q.input })) : null,
         allLangsLine(q.item, false),
         q.item.c2name ? h('div', { class: 'qz-dim', text: [q.item.groupLabel, q.item.c1name, q.item.c2name].filter(Boolean).join(' › ') }) : null))));
@@ -3823,40 +3957,36 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 /* ============================================================
    aiquiz.js — "اختبار بالذكاء الاصطناعي": builds a ready-to-paste prompt from the shown/selected items,
    so any AI assistant (ChatGPT, Claude, Gemini…) can write an exam on exactly those lessons.
-   The options mirror the app's own quiz: question language(s), answer language, question types, number of questions.
+   The options mirror the app's own quiz (see langsel.js): question languages and answer languages (中文 in three forms /
+   عربي / English, several on each side, never the same thing on both sides), question types, number of questions.
    Nothing is sent anywhere by the app: the user copies the text and pastes it in the assistant of their choice.
-   Depends on core.js (MC.store, MC.LANGS) and, at call time only, on dom.js (MC.h, MC.modal, MC.toast).
-   Pure, tested part: MC.AIQ.buildPrompt(rows, opts)   opts = { q:[langs], a:'ar', types:[ids], count, answers:'end'|'each'|'none' }
+   Depends on core.js (MC.store), langsel.js and, at call time only, on dom.js (MC.h, MC.modal, MC.toast).
+   Pure, tested part: MC.AIQ.buildPrompt(rows, opts)   opts = { q:[slots], a:[slots], types:[ids], count, answers:'end'|'each'|'none' }
    The last choices are remembered in this browser (key mc.aiq.v1).
    ============================================================ */
 (function (g) {
   'use strict';
   const MC = g.MC = g.MC || {};
   const AIQ = MC.AIQ = {};
+  const LS = () => MC.LangSel;
 
-  const LANG = { zh: 'الصينية (الحروف الصينية)', pin: 'البينيين (النطق)', ar: 'العربية', en: 'الإنجليزية' };
-  const LKEYS = ['zh', 'pin', 'ar', 'en'];
-  const SHORT = { zh: 'صيني', pin: 'بينيين', ar: 'عربي', en: 'إنجليزي' };
+  const COLS = { zh: 'صيني', pin: 'بينيين', ar: 'عربي', en: 'إنجليزي' };
   const TYPES = [
-    { id: 'write', label: '⌨️ كتابة' },
-    { id: 'mc', label: '🔘 اختيار من متعدد' },
-    { id: 'tf', label: '⚖️ صح أم خطأ' },
-    { id: 'fill', label: '🧩 إكمال الفراغ' },
+    { id: 'write', label: '⌨️ كتابة', line: 'كتابة: يُعرض عليّ نص السؤال وأكتب أنا الإجابة بدون خيارات.' },
+    { id: 'mc', label: '🔘 اختيار من متعدد', line: 'اختيار من متعدد: أربعة خيارات واحد منها صحيح، والخيارات الخاطئة قريبة من الصحيحة في المعنى أو الشكل ومن نفس الدروس (لا عشوائية).' },
+    { id: 'tf', label: '⚖️ صح أم خطأ', line: 'صح أم خطأ: يُعرض نص ومعه إجابة مقترحة وأحكم أنا على صحتها (اجعل نصف الأسئلة خاطئة).' },
+    { id: 'fill', label: '🧩 إكمال الفراغ', line: 'إكمال الفراغ: جملة أو عبارة بلغة السؤال حُذفت منها كلمة واحدة، وأكتب أنا الكلمة الناقصة بلغة الإجابة.' },
   ];
-  const DEFAULTS = { q: ['zh'], a: 'ar', types: ['mc', 'write', 'fill'], count: 10, answers: 'end', maxItems: 300 };
-  AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS; AIQ.LANGS = LKEYS;
+  const DEFAULTS = { q: ['zhp'], a: ['ar'], types: ['mc', 'write', 'fill'], count: 10, answers: 'end', maxItems: 300 };
+  AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS;
   AIQ.COUNTS = [2, 3, 5, 10, 15, 20, 30, 50];
   AIQ.countLabel = (n) => (n === 2 ? 'سؤالان' : n <= 10 ? n + ' أسئلة' : n + ' سؤالًا');
 
   const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
-  const names = (ks) => ks.map((k) => LANG[k]).join(' + ');
 
-  // Same rule as the app's quiz: the answer language is never also a question language, and there is always at least one question language.
   AIQ.normOpts = (o) => {
     const x = Object.assign({}, DEFAULTS, o || {});
-    x.a = LKEYS.indexOf(x.a) >= 0 ? x.a : DEFAULTS.a;
-    x.q = (Array.isArray(x.q) ? x.q : DEFAULTS.q).filter((k, i, arr) => LKEYS.indexOf(k) >= 0 && k !== x.a && arr.indexOf(k) === i);
-    if (!x.q.length) x.q = [x.a === 'zh' ? 'ar' : 'zh'];
+    const ln = LS().norm(x.q, x.a); x.q = ln.q; x.a = ln.a;
     x.types = TYPES.map((t) => t.id).filter((id) => (Array.isArray(x.types) ? x.types : []).indexOf(id) >= 0);
     if (!x.types.length) x.types = ['mc'];
     x.count = Math.max(1, Math.min(100, parseInt(x.count, 10) || DEFAULTS.count));
@@ -3864,15 +3994,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     return x;
   };
 
-  function typeLine(id, qs, a) {
-    const Q = names(qs); const A = LANG[a];
-    if (id === 'write') return 'كتابة: يُعرض عليّ النص بـ(' + Q + ') وأكتب أنا الإجابة بـ(' + A + ') بدون خيارات.';
-    if (id === 'mc') return 'اختيار من متعدد: يُعرض النص بـ(' + Q + ') مع أربعة خيارات بـ(' + A + ') واحد منها صحيح، والخيارات الخاطئة قريبة من الصحيحة في المعنى أو الشكل ومن نفس الدروس (لا عشوائية).';
-    if (id === 'tf') return 'صح أم خطأ: يُعرض نص بـ(' + Q + ') ومعه إجابة مقترحة بـ(' + A + ') وأحكم أنا على صحتها (اجعل نصف الأسئلة خاطئة).';
-    return 'إكمال الفراغ: جملة أو عبارة بـ(' + Q + ') حُذفت منها كلمة واحدة وتُعطى لي الكلمة المقابلة بـ(' + A + ')، وأكتب الكلمة الناقصة.';
-  }
-
-  // Items grouped by lesson (main group / sub group), one compact line each, columns = the languages used by the quiz.
+  // Items grouped by lesson (main group / sub group), one compact line each, columns = the fields the allowed directions use.
   function itemsBlock(rows, cols, maxItems) {
     const used = rows.slice(0, maxItems); const out = []; let last = null;
     used.forEach((r) => {
@@ -3884,26 +4006,32 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
 
   AIQ.buildPrompt = (rows, opts) => {
-    rows = rows || []; const o = AIQ.normOpts(opts);
-    const cols = LKEYS.filter((k) => o.q.indexOf(k) >= 0 || k === o.a);
+    rows = rows || []; const o = AIQ.normOpts(opts); const L = LS();
+    const pairs = L.pairs(o.q, o.a); const cols = L.usedFields(o.q, o.a);
     const blk = itemsBlock(rows, cols, o.maxItems);
     const ans = o.answers === 'each' ? 'اعرض الإجابة الصحيحة وشرحًا قصيرًا بعد كل سؤال مباشرة.'
       : o.answers === 'none' ? 'لا تعرض الإجابات الآن؛ سأرسل إجاباتي لتصحّحها لي بعد ذلك.'
         : 'ضع كل الأسئلة أولًا، ثم قسم «الإجابات والشرح» في النهاية.';
+    const hasHomophone = o.q.indexOf('pin') >= 0;
     return [
       'أنت مدرّس لغة صينية للناطقين بالعربية. أريد أن تُعدّ لي اختبارًا من البيانات أدناه فقط (لا تضف كلمات من خارجها).',
       '',
       'المطلوب:',
-      '- لغة السؤال: ' + names(o.q) + '.',
-      '- لغة الإجابة: ' + LANG[o.a] + '.',
+      '- لغة السؤال: ' + L.describe(o.q) + '.',
+      '- لغة الإجابة: ' + L.describe(o.a) + '.',
+      '- اتجاهات الأسئلة المسموحة (لكل سؤال اتجاه واحد فقط منها، وزّعها بالتساوي قدر الإمكان):',
+      ...(pairs.length ? pairs.map((p, i) => '  ' + (i + 1) + '. سؤال بـ' + L.longLabel(p[0]) + ' ← إجابة بـ' + L.longLabel(p[1])) : ['  (لا يوجد اتجاه صالح: غيّر اختيار اللغات)']),
+      '- «الصينية (رمز + بينيين)» تعني كتابة الحروف الصينية ثم البينيين تحتها، و«رمز فقط» الحروف وحدها، و«بينيين فقط» النطق وحده.',
+      '- لا يظهر في نص السؤال أي جزء من الإجابة. وإذا كان حقل الاتجاه ناقصًا (—) لعنصر فلا تستخدم هذا الاتجاه لهذا العنصر.',
+      ...(hasHomophone ? ['- إذا كان السؤال «بينيين فقط» وكانت عدة عناصر لها النطق نفسه فاقبل أي إجابة صحيحة منها.'] : []),
       '- عدد الأسئلة: ' + o.count + (o.count > 3 ? '، موزّعة بالتساوي على الدروس المذكورة.' : '.'),
       '- أنواع الأسئلة (وزّعها على هذه الأنواع):',
-      ...o.types.map((id) => '  - ' + typeLine(id, o.q, o.a)),
+      ...o.types.map((id) => '  - ' + TYPES.find((t) => t.id === id).line),
       '- اكتب التعليمات بالعربية، ولا تغيّر نص البيانات.',
       '- ' + ans,
       '- في النهاية اذكر الكلمات التي يُحتمل أن أخطئ فيها وراجعها معي.',
       '',
-      'البيانات (' + blk.used + ' عنصرًا' + (blk.skipped ? '، وتم اقتصار الاختبار على أول ' + blk.used + ' من ' + rows.length : '') + ') بصيغة: ' + cols.map((k) => SHORT[k]).join(' | '),
+      'البيانات (' + blk.used + ' عنصرًا' + (blk.skipped ? '، وتم اقتصار الاختبار على أول ' + blk.used + ' من ' + rows.length : '') + ') بصيغة: ' + cols.map((k) => COLS[k]).join(' | '),
       blk.text,
     ].join('\n');
   };
@@ -3922,7 +4050,6 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const h = MC.h;
     if (!rows || !rows.length) return MC.toast('لا توجد عناصر لإعداد الاختبار', 'err');
     let o = AIQ.loadOpts(); const title = (ui && ui.title) || '';
-    const labelOf = (k) => (MC.LANGS.find((l) => l.key === k) || { label: k }).label;
     const ta = h('textarea', { class: 'inp', rows: 12, readonly: 'readonly', dir: 'auto', style: { width: '100%', fontSize: '12.5px', fontFamily: 'inherit' } });
     const note = h('div', { class: 'hint' });
     const opts = h('div'); const copyBtns = h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap', marginTop: '8px' } });
@@ -3932,15 +4059,19 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const copy = async () => { try { await navigator.clipboard.writeText(ta.value); MC.toast('تم نسخ نص الاختبار — الصقه في المساعد', 'ok'); return true; } catch (e) { ta.removeAttribute('readonly'); ta.select(); try { document.execCommand('copy'); MC.toast('تم النسخ', 'ok'); ta.setAttribute('readonly', 'readonly'); return true; } catch (e2) { MC.toast('انسخ النص يدويًا من المربع', 'err'); return false; } } };
     function render() {
       opts.innerHTML = '';
+      const lw = LS().widget(o, () => { o = AIQ.normOpts(o); AIQ.saveOpts(o); render(); });
+      const notes = LS().notes(o.q, o.a); const valid = LS().valid(o.q, o.a);
       opts.append(
-        sec('❓ لغة السؤال (يمكن اختيار أكثر من لغة)', h('div', { class: 'qz-chips' }, ...LKEYS.map((k) => chip(labelOf(k), o.q.indexOf(k) >= 0, () => set({ q: o.q.indexOf(k) >= 0 ? o.q.filter((x) => x !== k) : o.q.concat([k]) }))))),
-        sec('✍️ لغة الإجابة', h('div', { class: 'qz-chips' }, ...LKEYS.map((k) => chip((o.a === k ? '◉ ' : '○ ') + labelOf(k), o.a === k, () => set({ a: k }))))),
+        sec('❓ لغة السؤال (يمكن اختيار أكثر من لغة)', lw.q),
+        sec('✍️ لغة الإجابة (يمكن اختيار أكثر من لغة)', lw.a),
+        ...notes.map((n) => h('div', { class: 'qz-note' + (n[0] === 'warn' ? ' warn' : n[0] === 'ok' ? ' ok' : ''), text: n[1] })),
         sec('🧩 أنواع الأسئلة', h('div', { class: 'qz-chips' }, ...TYPES.map((t) => chip((o.types.indexOf(t.id) >= 0 ? '☑ ' : '☐ ') + t.label, o.types.indexOf(t.id) >= 0, () => set({ types: o.types.indexOf(t.id) >= 0 ? o.types.filter((x) => x !== t.id) : o.types.concat([t.id]) }))))),
         sec('🔢 عدد الأسئلة', h('div', { class: 'qz-chips' }, ...AIQ.COUNTS.map((n) => chip(String(n), o.count === n, () => set({ count: n }))))),
         sec('✅ الإجابات', h('div', { class: 'qz-chips' }, ...[['end', 'في النهاية'], ['each', 'بعد كل سؤال'], ['none', 'أرسل إجاباتي لتصحّحها']].map((p) => chip(p[1], o.answers === p[0], () => set({ answers: p[0] }))))));
-      const txt = AIQ.buildPrompt(rows, o); ta.value = txt;
+      const txt = valid ? AIQ.buildPrompt(rows, o) : 'اختر اتجاهًا صالحًا للأسئلة أولًا (انظر التنبيه أعلاه).'; ta.value = txt;
+      copyBtns.querySelectorAll('button').forEach((b) => { b.disabled = !valid; });
       const over = rows.length - Math.min(rows.length, DEFAULTS.maxItems);
-      note.textContent = rows.length + ' عنصرًا' + (over > 0 ? ' (سيُقتصر على أول ' + DEFAULTS.maxItems + ')' : '') + ' · طول النص ' + txt.length + ' حرفًا';
+      note.textContent = rows.length + ' عنصرًا' + (over > 0 ? ' (سيُقتصر على أول ' + DEFAULTS.maxItems + ')' : '') + (valid ? ' · طول النص ' + txt.length + ' حرفًا' : '');
     }
     copyBtns.append(
       h('button', { class: 'btn pri', type: 'button', onclick: copy }, MC.ico('dup'), h('span', { text: 'نسخ' })),

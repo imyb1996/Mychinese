@@ -2130,6 +2130,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   S.deviceName = () => (MC.store.get(DEVK, {}) || {}).name || '';
   S.setDeviceName = (n) => { const d = MC.store.get(DEVK, {}) || {}; d.id = d.id || S.deviceId(); d.name = String(n || '').slice(0, 40); MC.store.set(DEVK, d); };
   S.access = 'unknown';   // 'approved' | 'pending' | 'unknown' | 'offline'
+  // «This browser was approved before»: remembered in the browser so the app opens at once on the next visits. The server is still asked on every
+  // visit (in the background): when the device is no longer approved the flag is erased and the lock screen comes back. The flag only skips the
+  // waiting; it never grants anything: the dictionary data itself is only ever served by the server to an approved device.
+  const TRUSTK = 'mc.access.v1';
+  S.isTrusted = () => { const t = MC.store.get(TRUSTK, null); return !!(t && t.id && t.id === S.deviceId()); };
+  S.setTrusted = () => { MC.store.set(TRUSTK, { id: S.deviceId(), at: Date.now() }); };
+  S.clearTrusted = () => { MC.store.del(TRUSTK); };
   S.setConfig = (patch) => { MC.store.set(CFG, Object.assign(S.config(), patch)); MC.emit('source'); };
   S.parseSheetId = (s) => { s = String(s || '').trim(); const m = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/); if (m) return m[1]; return /^[a-zA-Z0-9_-]{20,}$/.test(s) ? s : ''; };
   S.state = { status: 'idle', message: '', lastSync: null, via: '', rev: '', pending: 0 };
@@ -2191,7 +2198,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const d = await S.api('status');
     if (d && d.error === 'unknown action') throw new Error('نسخة Apps Script قديمة: حدّث Code.gs في الشيت وانشره من جديد (Deploy ▸ Manage deployments ▸ New version)');
     if (!d || !d.ok) throw new Error((d && d.error) || 'ردّ غير صالح من Apps Script');
-    S.access = d.state || 'unknown'; S.accessName = d.name || ''; return S.access;
+    S.access = d.state || 'unknown'; S.accessName = d.name || ''; if (S.access === 'approved') S.setTrusted(); return S.access;
+  };
+  // Background check after a fast start: resolves to true when the device is still approved or when the server cannot be reached (offline users
+  // are not locked out); false when the server says this device is NOT approved (the trust flag is erased).
+  S.verifyInBackground = async () => {
+    try { const st = await S.checkAccess(); if (st === 'approved') return true; S.clearTrusted(); return false; }
+    catch (e) { return true; }
   };
   // ONE request per device, and the name is required. S.requestAlready tells the caller the server already had a request from this device.
   S.requestAccess = async (name) => {
@@ -2201,7 +2214,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const d = await S.api('register', { name: nm }); if (!d || !d.ok) throw new Error((d && (d.message || d.error)) || 'تعذّر إرسال الطلب');
     S.access = d.state || 'pending'; S.requestAlready = !!d.already; S.accessName = d.name || nm; return S.access;
   };
-  const lock = (access, message) => { S.access = access || 'unknown'; setState({ status: 'locked', access: S.access, message: message || 'هذا الجهاز غير مسموح له بالدخول' }); };
+  const lock = (access, message) => { S.clearTrusted(); S.access = access || 'unknown'; setState({ status: 'locked', access: S.access, message: message || 'هذا الجهاز غير مسموح له بالدخول' }); };
   async function post(body) {
     body = Object.assign({ device: S.deviceId() }, body);
     const url = S.config().scriptUrl; const payload = JSON.stringify(body);
@@ -5390,7 +5403,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   // Entry point. Secure build: nothing from the dictionary is loaded or shown until this browser's device code is approved in the sheet.
   UI.init = () => {
     MC.applyFontVars();
-    if (MC.Source && MC.Source.secure()) UI.gate().then(() => UI.start()); else UI.start();
+    const S0 = MC.Source;
+    if (S0 && S0.secure()) {
+      if (S0.isTrusted() && S0.hasScript()) {                  // approved before: open at once, verify in the background
+        UI.start();
+        S0.verifyInBackground().then((ok) => { if (!ok) g.location.reload(); });   // revoked meanwhile: the trust flag is gone, the lock screen comes back
+      } else UI.gate().then(() => UI.start());
+    } else UI.start();
   };
   UI.start = () => {
     MC.load(); MC.applyFontVars();

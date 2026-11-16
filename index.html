@@ -3977,7 +3977,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     { id: 'tf', label: '⚖️ صح أم خطأ', line: 'صح أم خطأ: يُعرض نص ومعه إجابة مقترحة وأحكم أنا على صحتها (اجعل نصف الأسئلة خاطئة).' },
     { id: 'fill', label: '🧩 إكمال الفراغ', line: 'إكمال الفراغ: جملة أو عبارة بلغة السؤال حُذفت منها كلمة واحدة، وأكتب أنا الكلمة الناقصة بلغة الإجابة.' },
   ];
-  const DEFAULTS = { q: ['zhp'], a: ['ar'], types: ['mc', 'write', 'fill'], count: 10, answers: 'end', maxItems: 300 };
+  const DEFAULTS = { q: ['zhp'], a: ['ar'], types: ['mc', 'write', 'fill'], count: 10, answers: 'end', review: true, maxItems: 300 };
   AIQ.TYPES = TYPES; AIQ.DEFAULTS = DEFAULTS;
   AIQ.COUNTS = [2, 3, 5, 10, 15, 20, 30, 50];
   AIQ.countLabel = (n) => (n === 2 ? 'سؤالان' : n <= 10 ? n + ' أسئلة' : n + ' سؤالًا');
@@ -3991,6 +3991,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     if (!x.types.length) x.types = ['mc'];
     x.count = Math.max(1, Math.min(100, parseInt(x.count, 10) || DEFAULTS.count));
     x.answers = ['end', 'each', 'none'].indexOf(x.answers) >= 0 ? x.answers : 'end';
+    x.review = x.review !== false && x.review !== 'false' && x.review !== 0;   // «list the words I may get wrong and review them with me» (on by default)
     return x;
   };
 
@@ -4029,7 +4030,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       ...o.types.map((id) => '  - ' + TYPES.find((t) => t.id === id).line),
       '- اكتب التعليمات بالعربية، ولا تغيّر نص البيانات.',
       '- ' + ans,
-      '- في النهاية اذكر الكلمات التي يُحتمل أن أخطئ فيها وراجعها معي.',
+      ...(o.review ? ['- في النهاية اذكر الكلمات التي يُحتمل أن أخطئ فيها وراجعها معي.'] : []),
       '',
       'البيانات (' + blk.used + ' عنصرًا' + (blk.skipped ? '، وتم اقتصار الاختبار على أول ' + blk.used + ' من ' + rows.length : '') + ') بصيغة: ' + cols.map((k) => COLS[k]).join(' | '),
       blk.text,
@@ -4037,7 +4038,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   };
 
   AIQ.loadOpts = () => { try { return AIQ.normOpts(MC.store.get('mc.aiq.v1', {}) || {}); } catch (e) { return AIQ.normOpts({}); } };
-  AIQ.saveOpts = (o) => { try { MC.store.set('mc.aiq.v1', { q: o.q, a: o.a, types: o.types, count: o.count, answers: o.answers }); } catch (e) { /* storage unavailable */ } };
+  AIQ.saveOpts = (o) => { try { MC.store.set('mc.aiq.v1', { q: o.q, a: o.a, types: o.types, count: o.count, answers: o.answers, review: o.review }); } catch (e) { /* storage unavailable */ } };
 
   const SITES = [
     { name: 'ChatGPT', url: 'https://chatgpt.com/' },
@@ -4067,7 +4068,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         ...notes.map((n) => h('div', { class: 'qz-note' + (n[0] === 'warn' ? ' warn' : n[0] === 'ok' ? ' ok' : ''), text: n[1] })),
         sec('🧩 أنواع الأسئلة', h('div', { class: 'qz-chips' }, ...TYPES.map((t) => chip((o.types.indexOf(t.id) >= 0 ? '☑ ' : '☐ ') + t.label, o.types.indexOf(t.id) >= 0, () => set({ types: o.types.indexOf(t.id) >= 0 ? o.types.filter((x) => x !== t.id) : o.types.concat([t.id]) }))))),
         sec('🔢 عدد الأسئلة', h('div', { class: 'qz-chips' }, ...AIQ.COUNTS.map((n) => chip(String(n), o.count === n, () => set({ count: n }))))),
-        sec('✅ الإجابات', h('div', { class: 'qz-chips' }, ...[['end', 'في النهاية'], ['each', 'بعد كل سؤال'], ['none', 'أرسل إجاباتي لتصحّحها']].map((p) => chip(p[1], o.answers === p[0], () => set({ answers: p[0] }))))));
+        sec('✅ الإجابات', h('div', { class: 'qz-chips' }, ...[['end', 'في النهاية'], ['each', 'بعد كل سؤال'], ['none', 'أرسل إجاباتي لتصحّحها']].map((p) => chip(p[1], o.answers === p[0], () => set({ answers: p[0] }))))),
+        sec('📝 مراجعة في النهاية', h('div', { class: 'qz-chips' }, chip((o.review ? '☑ ' : '☐ ') + 'ذكر الكلمات التي قد أخطئ فيها ومراجعتها معي', o.review, () => set({ review: !o.review })))));
       const txt = valid ? AIQ.buildPrompt(rows, o) : 'اختر اتجاهًا صالحًا للأسئلة أولًا (انظر التنبيه أعلاه).'; ta.value = txt;
       copyBtns.querySelectorAll('button').forEach((b) => { b.disabled = !valid; });
       const over = rows.length - Math.min(rows.length, DEFAULTS.maxItems);

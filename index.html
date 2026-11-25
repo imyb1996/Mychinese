@@ -874,6 +874,80 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     return s;
   }
 
+  /* ---------- search: tone-aware pinyin + «*» wildcard ----------
+     Plain words keep the old loose behaviour (tone marks / diacritics ignored: «hao» finds hǎo and hào).
+     Extra, only when the typed word asks for it:
+       • tone numbers after a syllable: ma3 · ni3hao3 · nihao3 (1-4 = tones, 0 or 5 = neutral tone);  v / ü / u: all mean ü: lv4 · nv3 · nu:3 · lü4
+       • tone marks typed directly: nǐ · nǐhǎo   (then the tone counts)
+       • pinyin written without spaces finds pinyin written with spaces: nihao → nǐ hǎo ; xian also finds xī'ān
+       • «*» = any text: دع*نرس finds «دعونا نُرسم» · ni*ma · 你*好 */
+  const PVOW = 'aeiouüāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ';
+  const PLET = 'a-zü' + 'āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ';
+  const TONEV = { a: 'āáǎà', e: 'ēéěè', i: 'īíǐì', o: 'ōóǒò', u: 'ūúǔù', 'ü': 'ǖǘǚǜ' };
+  const UNTONE = {}; Object.keys(TONEV).forEach((k) => TONEV[k].split('').forEach((ch) => { UNTONE[ch] = k === 'ü' ? 'v' : k; }));
+  const MARKRE = /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/;
+  const LETRE = new RegExp('^[' + PLET + ']+$');
+  // one pinyin syllable: [initial] vowels [n | ng | r] (a final n/ng/r is taken only when no vowel follows, so «xi an» and «lǎoshī» split correctly)
+  const SYLRE = new RegExp('(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?[' + PVOW + ']+(?:ng(?![' + PVOW + '])|n(?![' + PVOW + '])|r(?![' + PVOW + ']))?|[' + PLET + ']+', 'g');
+  const RUNRE = new RegExp('[' + PLET + ':]+[0-5]?|[\\s\\S]', 'g'); const RUNOK = new RegExp('^[' + PLET + ':]+[0-5]?$');   // a run of pinyin letters with an optional tone digit
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pinNorm = (s) => String(s == null ? '' : s).normalize('NFC').toLowerCase().replace(/ɑ/g, 'a').replace(/ɡ/g, 'g').replace(/u:/g, 'ü').replace(new RegExp('[^' + PLET + ']+', 'g'), ' ').trim();
+  const pinSylls = (s) => { const out = []; pinNorm(s).split(' ').forEach((w) => { if (w) (w.match(SYLRE) || [w]).forEach((x) => out.push(x)); }); return out; };
+  const stripTones = (s) => s.replace(/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/g, (ch) => UNTONE[ch]).replace(/ü/g, 'v');
+  // put tone n (1-4) on the right vowel of a syllable (a/e first, «ou» → o, otherwise the last vowel); 0/5 = neutral = no mark
+  function pinMark(b, n) {
+    if (!(n >= 1 && n <= 4)) return b;
+    let i = b.indexOf('a'); if (i < 0) i = b.indexOf('e'); if (i < 0) i = b.indexOf('ou');
+    if (i < 0) for (let k = b.length - 1; k >= 0; k--) if ('aeiouü'.indexOf(b[k]) >= 0) { i = k; break; }
+    return i < 0 ? b : b.slice(0, i) + TONEV[b[i]][n - 1] + b.slice(i + 1);
+  }
+  // regex source for one syllable: marked letters / a given tone must match exactly, plain vowels accept any tone
+  const sylLoose = (s) => s.split('').map((ch) => (TONEV[ch] ? '[' + ch + TONEV[ch] + ']' : escRe(ch))).join('');
+  const fixU = (s) => (/^[jqxy]ü/.test(s) ? s[0] + 'u' + s.slice(2) : s);   // jü / qü / xü / yü are spelled ju / qu / xu / yu
+  function pinChain(t) {
+    const runs = t.match(RUNRE) || [];
+    if (runs.join('') !== t || runs.some((r) => !RUNOK.test(r))) return null;
+    if (!runs.some((r) => /[0-5]$/.test(r)) && !MARKRE.test(t)) return null;   // nothing asks for tone-aware matching
+    const parts = [];
+    runs.forEach((r) => {
+      const d = /[0-5]$/.test(r) ? +r.slice(-1) : null; const letters = d == null ? r : r.slice(0, -1);
+      const sy = pinSylls(letters.replace(/u:/g, 'ü').replace(/v/g, 'ü')); if (!sy.length) return;
+      sy.forEach((s, k) => {
+        s = fixU(s);
+        if (k === sy.length - 1 && d != null) parts.push(d >= 1 && d <= 4 ? escRe(pinMark(s, d)) : escRe(s));   // a digit fixes the tone of its syllable (0 / 5 = neutral)
+        else parts.push(MARKRE.test(s) ? escRe(s) : sylLoose(s));
+      });
+    });
+    return parts.length ? new RegExp('(?:^| )' + parts.join(' ') + '(?= |$)') : null;
+  }
+  function compileTok(raw) {
+    const t = raw.normalize('NFC').toLowerCase();
+    if (t.indexOf('*') >= 0) {                                   // wildcard: * = any text (also across spaces), tested on each field
+      const parts = MC.norm(t).split('*'); if (!parts.some(Boolean)) return () => true;
+      const re = new RegExp(parts.map(escRe).join('.*'));
+      return (c) => c.f.some((x) => re.test(x));
+    }
+    const g = MC.norm(t); const fns = []; let strict = false;
+    const tl = t.replace(/u:/g, 'ü');
+    const chain = pinChain(tl);
+    if (chain) { fns.push((c) => chain.test(c.ps)); strict = MARKRE.test(tl) && LETRE.test(tl); }
+    if (!chain && /ü/.test(tl) && /^[a-zü]+$/.test(tl)) { const tv = stripTones(tl); return (c) => c.pvc.indexOf(tv) >= 0; }   // an explicit ü (or u:) is strict: lü ≠ lu
+    if (!strict) fns.push((c) => c.g.indexOf(g) >= 0);
+    if (!chain && /^[a-zü]+$/.test(tl) && (tl.length >= 4 || /[vü]/.test(tl))) { const tv = stripTones(tl); fns.push((c) => c.pvc.indexOf(tv) >= 0); }   // spaces between syllables don't matter; v / ü = ü
+    return (c) => fns.some((f) => f(c));
+  }
+  function pcache(it) {
+    const x = ix(); const m = x.pc || (x.pc = new Map()); let c = m.get(it.id);
+    if (!c) { const sy = pinSylls(it.pin); c = { g: blobOf(it), f: [it.zh, it.pin, it.ar, it.en].map((v) => MC.norm(v)), ps: sy.join(' '), pvc: stripTones(sy.join('')) }; m.set(it.id, c); }
+    return c;
+  }
+  // text → function(item) or null (empty query). All words must match.
+  MC.matcher = (q) => {
+    const ws = String(q == null ? '' : q).split(/\s+/).filter(Boolean); if (!ws.length) return null;
+    const fs = ws.map(compileTok);
+    return (it) => { const c = pcache(it); for (let i = 0; i < fs.length; i++) if (!fs[i](c)) return false; return true; };
+  };
+
   /* ---------- hidden items (stored in this browser only; not part of the sheet) ---------- */
   const HKEY = 'mc.hidden.v1';
   const hidden = new Set((MC.store.get(HKEY, []) || []).map(Number));
@@ -894,14 +968,14 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const grp = f.group && f.group !== 'all' ? (Array.isArray(f.group) ? f.group : [f.group]) : null;
     const idSet = f.ids ? new Set(f.ids.map(Number)) : null;
     const c2Set = Array.isArray(f.c2) ? (f.c2.length ? new Set(f.c2.map(Number)) : null) : null;
-    const toks = f.q ? MC.norm(f.q).split(' ').filter(Boolean) : null;
+    const match = f.q ? MC.matcher(f.q) : null;
     const out = [];
     for (const it of list) {
       if (idSet && !idSet.has(it.id)) continue;
       if (hm !== 'all') { const ih = hidden.has(it.id); if (hm === 'exclude' ? ih : !ih) continue; }
       if (c2Set) { if (!c2Set.has(it.c2)) continue; } else if (!Array.isArray(f.c2) && f.c2 != null && f.c2 !== '' && it.c2 !== +f.c2) continue;
       if (f.dupOnly && !ix().dup.has(it.id)) continue;
-      if (toks) { const b = blobOf(it); let ok = true; for (const t of toks) { if (b.indexOf(t) < 0) { ok = false; break; } } if (!ok) continue; }
+      if (match && !match(it)) continue;
       const v = MC.view(it);
       if (grp && grp.indexOf(v.group) < 0) continue;
       if (f.kind && v.kind !== f.kind) continue;

@@ -373,9 +373,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* phones: the header scrolls away, but the lesson navigator stays pinned to the top so you can switch lesson from anywhere in the list */
 @media (max-width: 720px) {
   .ui-top { display: contents; }
-  .ui-rnav { position: sticky; top: 0; z-index: 40; background: var(--bg); padding: 4px 2px; border-bottom: 1px solid var(--bd); }
-  .ui-navtab .v { max-width: 130px; }
+  .ui-pin { position: sticky; top: 0; z-index: 40; background: var(--bg); border-bottom: 1px solid var(--bd); }   /* navigator + search stay pinned */
+  .ui-rnav, .ui-rsearch { padding-block: 3px; }
+  .ui-navtabs { gap: 5px; }
+  .ui-navtab { flex: 1 1 28%; min-width: 0; flex-direction: column; align-items: flex-start; gap: 0; padding: 2px 8px; }   /* the three buttons share one line */
+  .ui-navtab .k { font-size: 10px; color: var(--dm); font-weight: 600; } .ui-navtab.on .k { color: rgba(255, 255, 255, .85); }
+  .ui-navtab .v { max-width: 100%; }
 }
+
+/* search row: one clear button only (hide the browser's own ×), plus the «search everything» switch */
+.ui-search input::-webkit-search-cancel-button, .ui-search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.ui-search input::-ms-clear { display: none; }
+.ui-rsearch .ui-c-search { flex: 1 1 100%; flex-wrap: nowrap; }
+.ui-rsearch .ui-search { flex: 1 1 auto; min-width: 140px; }
+.ui-scope { flex: none; white-space: nowrap; min-height: 30px; } .ui-scope.on { background: var(--bl); border-color: var(--bl); color: #fff; } .ui-scope.on .ic { color: #fff; }
 
 /* ===== quiz.css ===== */
 /* ============================================================
@@ -5304,7 +5315,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const MC = g.MC; const h = MC.h; const esc = MC.esc;
   const UI = (MC.UI = MC.UI || {});
   const rng = { from: '', to: '' };   // the «from … to …» sub-group range typed in the sub-group menu (kept while the menu re-renders)
-  const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
+  const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', searchAll: false, dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
   const NV = { tab: '', pop: false, popDirty: false, ls: 0, cur: { c1: null, c2: null }, v: {}, restored: false };   // lesson navigator state: opened button, multi-select list open?, lesson on screen
 
   const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
@@ -5336,6 +5347,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   function buildShell() {
     const root = MC.$('#app'); root.innerHTML = '';
     el.search = h('input', { class: 'inp', type: 'search', placeholder: 'بحث: 中文 · pinyin · عربي · English  (اضغط / للتركيز)', autocomplete: 'off', oninput: MC.debounce((e) => { S.q = e.target.value; S.limit = STEP; render(); }, 140) });
+    // «search everything»: off by default (search only inside what is displayed); on = ignore the data-source tab, the multi-select filter and hidden words
+    el.scope = h('button', { class: 'chip ui-scope', type: 'button', 'aria-pressed': 'false', title: 'عند التفعيل: يبحث في جميع الكلمات والجمل حتى غير المعروضة (كل المصادر والمجموعات والمخفية). الافتراضي: البحث في المعروض فقط', onclick: () => { S.searchAll = !S.searchAll; S.limit = STEP; render(); } }, MC.ico('search'), 'بحث في الكل');
     el.clear = h('button', { type: 'button', title: 'مسح', 'aria-label': 'مسح البحث', html: MC.icon('x'), onclick: () => { el.search.value = ''; S.q = ''; S.limit = STEP; render(); el.search.focus(); } });
     const addBtn = btn('add', 'إضافة', () => UI.openItemDialog({ mode: 'add', c2: S.c2.length === 1 ? S.c2[0] : NV.cur.c2, group: S.group }), 'pri');
     const bulkBtn = btn('bulk', 'إدخال دفعة', () => need('Bulk', 'open') && MC.Bulk.open({ group: S.group !== 'all' ? S.group : null, c1: S.c1 ? +S.c1 : NV.cur.c1, c2: S.c2.length === 1 ? S.c2[0] : NV.cur.c2 }));
@@ -5367,9 +5380,9 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     //  1) logo + title | source tabs   (lesson navigator right under it)   2) add | print | quiz | settings + data   3) search | view buttons
     const top = h('header', { class: 'ui-top' },
       h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), cluster('ui-c-tabs', el.chips)),
-      h('div', { class: 'ui-row ui-rnav' }, el.nav),
+      (el.pin = h('div', { class: 'ui-pin' }, h('div', { class: 'ui-row ui-rnav' }, el.nav), h('div', { class: 'ui-row ui-rsearch' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear), el.scope)))),
       h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, clsBtn, dataBtn)),
-      h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear)), sepEl(), cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
+      h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
     el.top = top;
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });
@@ -5434,7 +5447,10 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
 
   /* ---------- rendering ---------- */
-  function compute() { S.views = MC.query({ group: S.group, level: '', c1: '', c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode }); }
+  function compute() {
+    const all = S.searchAll && S.q.trim();   // search everything: no data-source / sub-group filter, hidden words included
+    S.views = MC.query(all ? { level: '', c1: '', c2: [], q: S.q, dupOnly: S.dupOnly, hidden: 'all' } : { group: S.group, level: '', c1: '', c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode });
+  }
 
   function renderChips() {
     // counts follow the hidden filter: normal mode counts the visible items, "hidden" mode counts the hidden ones
@@ -5480,7 +5496,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     b.style.setProperty('--gc', color || 'var(--bl)'); return b;
   };
   // y (viewport) below which the list is really visible: under the pinned navigator (phones) / under the sticky header (desktop)
-  function stickyBottom() { const a = el.nav ? el.nav.getBoundingClientRect().bottom : 0; const b = el.top ? el.top.getBoundingClientRect().bottom : 0; return Math.max(a, b, 0); }
+  function stickyBottom() { const a = el.pin ? el.pin.getBoundingClientRect().bottom : 0; const b = el.top ? el.top.getBoundingClientRect().bottom : 0; return Math.max(a, b, 0); }
   function scrollListTop() { if (!el.list) return; g.scrollTo(0, Math.max(0, el.list.getBoundingClientRect().top + g.scrollY - stickyBottom() - 6)); updateCur(); }
   // jump to a lesson: kind = 'c2' | 'c1' | 'lvl'. If a filter hides it, the filter is dropped first.
   function navTo(kind, id, retry) {
@@ -5586,6 +5602,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     if (NV.cur.c1 != null && !o.c1s.some((x) => String(x.v) === String(NV.cur.c1))) NV.cur = { c1: null, c2: null };
     renderNav();
     el.dup.classList.toggle('on', S.dupOnly);
+    el.scope.classList.toggle('on', S.searchAll); el.scope.setAttribute('aria-pressed', S.searchAll ? 'true' : 'false');
     el.hid.innerHTML = MC.icon(S.hiddenMode === 'only' ? 'show' : 'hide') + (S.hiddenMode === 'only' ? ' عرض العادية' : ' المخفية') + ' <span class="n">' + MC.hiddenCount() + '</span>';
     el.hid.classList.toggle('on', S.hiddenMode === 'only'); el.hid.hidden = !MC.hiddenCount() && S.hiddenMode !== 'only';
     MC.$$('button', el.langs).forEach((b) => { const hid = MC.settings.hidden[b.dataset.lang]; b.classList.toggle('on', !hid); b.classList.toggle('off', !!hid); });

@@ -350,47 +350,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.sc-up:hover { background: rgba(24,128,56,.12); } .btn.sc-dn:hover { background: rgba(197,34,31,.12); }
 @media (max-width: 640px) { .ui-selbar { padding: 7px 8px; gap: 5px; } .ui-selbar .sb-row { gap: 4px; } .ui-selbar .btn { padding: 3px 8px; min-height: 30px; font-size: 12px; gap: 4px; } }
 
-/* ============ lesson navigator: toggle button + level / main group / sub-group buttons ============ */
+/* ============ lesson navigator: level / main group / sub-group buttons; they follow the lesson on screen ============ */
 .ui-rnav { padding: 3px 2px; }
 .ui-nav { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
-.ui-navtog { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 32px; padding: 3px 12px; border-radius: 10px; border: 1.5px solid var(--bd); background: var(--card); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; color: var(--tx); transition: .12s; }
-.ui-navtog:hover { border-color: var(--bl); }
-.ui-navtog .lb { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ui-navtog .chev { font-size: 11px; color: var(--dm); flex: none; }
-.ui-navtog.has { border-color: var(--bl); background: var(--bl); color: #fff; } .ui-navtog.has .chev { color: rgba(255, 255, 255, .85); }
-.ui-navtog.open { border-color: var(--bl); }
-.ui-navbody { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--bd); border-radius: 12px; background: var(--sf); }
-.ui-navbody[hidden] { display: none; }
 .ui-navtabs { gap: 8px; align-items: center; }
 .ui-navtab { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 10px; border: 1.5px solid var(--bd); background: var(--card); cursor: pointer; font: inherit; font-size: 13px; color: var(--tx); transition: .12s; }
-.ui-navtab .k { font-weight: 700; } .ui-navtab .v { color: var(--dm); font-size: 12px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-navtab .k { font-weight: 700; } .ui-navtab .v { color: var(--bl); font-weight: 700; font-size: 12.5px; max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-navtab:hover:not(:disabled) { border-color: var(--bl); }
-.ui-navtab.has .v { color: var(--bl); font-weight: 700; }
-.ui-navtab.on { background: var(--bl); border-color: var(--bl); color: #fff; box-shadow: var(--sh); } .ui-navtab.on .v, .ui-navtab.on.has .v { color: rgba(255, 255, 255, .9); }
+.ui-navtab.on { background: var(--bl); border-color: var(--bl); color: #fff; box-shadow: var(--sh); } .ui-navtab.on .v { color: rgba(255, 255, 255, .92); }
 .ui-navtab:disabled { opacity: .5; cursor: not-allowed; }
-.ui-navopts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; border-top: 1px dashed var(--bd); max-height: 38vh; overflow-y: auto; }
-.ui-multi { padding: 4px 11px; font-size: 13px; }
-.ui-ms-rng { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ui-navopts { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 2px; border-top: 1px dashed var(--bd); max-height: 38vh; overflow-y: auto; }
+.ui-gchip.ui-num { min-width: 44px; justify-content: center; font-family: var(--fm); }
+.ui-multi, .ui-flt { padding: 4px 11px; font-size: 13px; }
+/* multi-select: an ordinary drop-down list, a check box beside every lesson, «from lesson … to …» at the top */
+.ui-ms { position: relative; }
+.ui-ms-pop { position: absolute; z-index: 60; top: calc(100% + 4px); inset-inline-start: 0; min-width: 240px; width: max-content; max-width: min(92vw, 360px); max-height: 52vh; overflow: auto; background: var(--sf); border: 1px solid var(--bd); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; }
+.ui-ms-head { display: flex; gap: 6px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
+.ui-ms-rng { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
 .ui-ms-rng .ui-dim { font-size: 12.5px; color: var(--dm); } .ui-ms-n { width: 64px; min-width: 0; padding: 4px 6px; text-align: center; }
-@media (max-width: 720px) { .ui-navtog { max-width: 100%; } .ui-navtab .v { max-width: 120px; } }
+.ui-ms-it { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13.5px; } .ui-ms-it:hover { background: var(--bg2, rgba(0,0,0,.06)); } .ui-ms-it input { width: 17px; height: 17px; accent-color: var(--bl); flex: none; }
 
 /* phones: the header scrolls away, but the lesson navigator stays pinned to the top so you can switch lesson from anywhere in the list */
 @media (max-width: 720px) {
   .ui-top { display: contents; }
   .ui-rnav { position: sticky; top: 0; z-index: 40; background: var(--bg); padding: 4px 2px; border-bottom: 1px solid var(--bd); }
-  .ui-navbody { max-height: 55vh; overflow-y: auto; }
-  .ui-navopts { max-height: none; overflow: visible; }
+  .ui-navtab .v { max-width: 130px; }
 }
-
-/* multi-select list of the sub-groups (opens from the «multi-select» button) and number-only choice buttons */
-.ui-mslist { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px dashed var(--bd); }
-.ui-ms-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .ui-ms-head .ui-dim { font-size: 12.5px; color: var(--dm); }
-.ui-ms-head .ui-sp { flex: 0 0 auto; margin-inline-start: auto; }
-.ui-ms-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; max-height: 40vh; overflow-y: auto; padding: 2px; }
-.ui-ms-it { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--bd); background: var(--card); cursor: pointer; font-size: 13.5px; }
-.ui-ms-it:hover { border-color: var(--bl); } .ui-ms-it.on { border-color: var(--bl); background: var(--bg2, rgba(45, 108, 223, .08)); font-weight: 700; }
-.ui-ms-it input { width: 17px; height: 17px; accent-color: var(--bl); flex: none; }
-.ui-gchip.ui-num { min-width: 44px; justify-content: center; font-family: var(--fm); }
 
 /* ===== quiz.css ===== */
 /* ============================================================
@@ -5320,8 +5305,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const UI = (MC.UI = MC.UI || {});
   const rng = { from: '', to: '' };   // the «from … to …» sub-group range typed in the sub-group menu (kept while the menu re-renders)
   const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
-  const NV = { open: false, tab: '', list: false, ls: 0 };   // lesson navigator UI state (kept in this browser): panel open?, which of level / c1 / c2 is expanded, multi-select mode of the sub-groups
-  let navOpts = { lvls: [], c1s: [], c2s: [] };         // options of the three lists, rebuilt by renderFilters
+  const NV = { tab: '', pop: false, popDirty: false, ls: 0, cur: { c1: null, c2: null }, v: {}, restored: false };   // lesson navigator state: opened button, multi-select list open?, lesson on screen
+
   const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
   const el = {};
   const STEP = 150;
@@ -5352,8 +5337,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const root = MC.$('#app'); root.innerHTML = '';
     el.search = h('input', { class: 'inp', type: 'search', placeholder: 'بحث: 中文 · pinyin · عربي · English  (اضغط / للتركيز)', autocomplete: 'off', oninput: MC.debounce((e) => { S.q = e.target.value; S.limit = STEP; render(); }, 140) });
     el.clear = h('button', { type: 'button', title: 'مسح', 'aria-label': 'مسح البحث', html: MC.icon('x'), onclick: () => { el.search.value = ''; S.q = ''; S.limit = STEP; render(); el.search.focus(); } });
-    const addBtn = btn('add', 'إضافة', () => UI.openItemDialog({ mode: 'add', c2: S.c2.length === 1 ? S.c2[0] : null, group: S.group }), 'pri');
-    const bulkBtn = btn('bulk', 'إدخال دفعة', () => need('Bulk', 'open') && MC.Bulk.open({ group: S.group !== 'all' ? S.group : null, c1: S.c1 || null, c2: S.c2.length === 1 ? S.c2[0] : null }));
+    const addBtn = btn('add', 'إضافة', () => UI.openItemDialog({ mode: 'add', c2: S.c2.length === 1 ? S.c2[0] : NV.cur.c2, group: S.group }), 'pri');
+    const bulkBtn = btn('bulk', 'إدخال دفعة', () => need('Bulk', 'open') && MC.Bulk.open({ group: S.group !== 'all' ? S.group : null, c1: S.c1 ? +S.c1 : NV.cur.c1, c2: S.c2.length === 1 ? S.c2[0] : NV.cur.c2 }));
     const printBtn = btn('print', 'طباعة', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للطباعة', 'err'); need('Print', 'open') && MC.Print.open(r, { title: UI.scopeTitle() }); });
     const quizBtn = btn('quiz', 'اختبار', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('Quiz', 'open') && MC.Quiz.open(r, { title: UI.scopeTitle() }); });
     const aiBtn = btn('sparkle', 'اختبار AI', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('AIQ', 'open') && MC.AIQ.open(r, { title: UI.scopeTitle() }); }, '', 'اختبار بالذكاء الاصطناعي: نسخ نص جاهز لأي مساعد');
@@ -5362,10 +5347,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const clsBtn = btn('layers', 'إدارة المجموعات', () => UI.openClassManager(S.group), '', 'إدارة المجموعات: إضافة وترتيب وتعديل وحذف المجموعات الرئيسية والفرعية');
     const dataBtn = btn('data', 'البيانات', () => UI.openData());
     el.chips = h('nav', { class: 'ui-groups', 'aria-label': 'مصادر البيانات' });
-    // lesson navigator: one toggle button (shows the current choice while folded) that opens level / main group / sub-group buttons
-    el.navTog = h('button', { class: 'ui-navtog', type: 'button', 'aria-expanded': 'false', onclick: () => { NV.open = !NV.open; NV.list = false; saveNav(); renderNav(); } });
-    el.navBody = h('div', { class: 'ui-navbody', hidden: true });
-    el.nav = h('div', { class: 'ui-nav' }, el.navTog, el.navBody);
+    el.nav = h('div', { class: 'ui-nav' });   // lesson navigator: level / main group / sub-group buttons (see renderNav)
     el.dup = h('button', { class: 'chip', type: 'button', title: 'إظهار العناصر المكررة فقط', onclick: () => { S.dupOnly = !S.dupOnly; S.limit = STEP; render(); } }, MC.ico('repeat'), 'مكررات');
     el.hid = h('button', { class: 'chip', type: 'button', title: 'عرض الكلمات المخفية فقط (للتراجع عن الإخفاء)', onclick: () => { S.hiddenMode = S.hiddenMode === 'only' ? 'exclude' : 'only'; S.limit = STEP; S.sel.clear(); render(); } });
     el.langs = h('div', { class: 'ui-lang', role: 'group', 'aria-label': 'إظهار اللغات' });
@@ -5388,6 +5370,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
       h('div', { class: 'ui-row ui-rnav' }, el.nav),
       h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, clsBtn, dataBtn)),
       h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear)), sepEl(), cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
+    el.top = top;
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });
     el.selbar = h('div', { class: 'ui-selbar', hidden: true });
@@ -5451,7 +5434,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
 
   /* ---------- rendering ---------- */
-  function compute() { S.views = MC.query({ group: S.group, level: S.level, c1: S.c1, c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode }); }
+  function compute() { S.views = MC.query({ group: S.group, level: '', c1: '', c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode }); }
 
   function renderChips() {
     // counts follow the hidden filter: normal mode counts the visible items, "hidden" mode counts the hidden ones
@@ -5459,113 +5442,149 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     el.chips.innerHTML = '';
     const mk = (code, label, n) => {
       const on = S.group === code;
-      el.chips.appendChild(h('button', { class: 'ui-gchip' + (on ? ' on' : ''), type: 'button', style: code === 'all' ? { '--gc': 'var(--tx)' } : null, onclick: () => { S.group = code; S.c1 = ''; S.c2 = []; S.limit = STEP; MC.setSetting('group', code); render(); } }, h('i'), label, ' ', h('span', { class: 'n', text: n })));
+      el.chips.appendChild(h('button', { class: 'ui-gchip' + (on ? ' on' : ''), type: 'button', style: code === 'all' ? { '--gc': 'var(--tx)' } : null, onclick: () => { S.group = code; S.c1 = ''; S.c2 = []; NV.cur = { c1: null, c2: null }; NV.tab = ''; NV.pop = false; S.limit = STEP; MC.setSetting('group', code); render(); g.scrollTo(0, 0); } }, h('i'), label, ' ', h('span', { class: 'n', text: n })));
       if (code !== 'all') { const b = el.chips.lastChild; b.style.setProperty('--gc', MC.groupStyle(code).color); }
     };
     mk('all', 'الكل', st.total);
     MC.groupsSorted().forEach((gr) => mk(gr.group, gr.label_ar, st.byGroup[gr.group] || 0));
   }
-  /* ---------- lesson navigator ---------- */
-  // text shown on the folded toggle button: the current choice (level › main group › sub-group)
-  function navSummary() {
-    const o = navOpts; const p = [];
-    if (S.level) p.push('مستوى ' + S.level);
-    if (S.c1) { const x = o.c1s.find((q) => String(q.v) === String(S.c1)); if (x) p.push(x.s); }
-    if (S.c2.length) {
-      const nm = S.c2.map((id) => { const x = o.c2s.find((q) => String(q.v) === String(id)); return x ? x.t : ''; }).filter(Boolean);
-      p.push(nm.length <= 2 ? nm.join(' + ') : nm.length + ' مجموعات فرعية (' + nm[0].split('_')[0] + ' ← ' + nm[nm.length - 1].split('_')[0] + ')');
-    }
-    return p.length ? p.join(' › ') : 'كل الدروس';
+  /* ---------- lesson navigator ----------
+     Three buttons (level / main group / sub-group) always visible. They show WHERE YOU ARE in the list (they follow the scroll) and clicking one
+     opens its choices; choosing jumps to that lesson (no filtering) and folds the choices. Filtering happens only through «multi-select»
+     (a check-box list of the sub-groups with a «from … to …» range), which sets S.c2. */
+  const clsLevel = (c1) => { const k = MC.getClass1(c1); return k && k.level != null && k.level !== '' ? +k.level : null; };
+  function calcOpts() {
+    const lv = new Set(); const c1s = [];
+    MC.groupsSorted().forEach((gr) => {
+      if (S.group !== 'all' && gr.group !== S.group) return;
+      MC.class1Of(gr.group).forEach((c) => {
+        if (c.level != null && c.level !== '' && Number.isFinite(+c.level)) lv.add(+c.level);
+        c1s.push({ v: c.c1, n: pad2(c.sort), g: gr.label_ar, s: pad2(c.sort) + '_' + c.name, t: (S.group === 'all' ? gr.label_ar + ' › ' : '') + pad2(c.sort) + '_' + c.name, color: MC.groupStyle(gr.group).color, level: clsLevel(c.c1) });
+      });
+    });
+    const lvls = Array.from(lv).sort((a, b) => a - b).map((n) => ({ v: n, t: 'مستوى ' + n }));
+    // the sub-groups offered belong to the main group on screen (or the filtered one while a filter is on)
+    const ctx = S.c2.length ? S.c1 : (NV.cur.c1 != null ? String(NV.cur.c1) : '');
+    const ok = ctx !== '' && c1s.some((x) => String(x.v) === String(ctx));
+    const c2s = ok ? MC.class2Of(ctx).map((c) => ({ v: c.c2, n: pad2(c.sort), t: pad2(c.sort) + '_' + c.name })) : [];
+    return { lvls, c1s, c2s, ctx: ok ? ctx : '' };
   }
+  // texts of the three buttons = the lesson currently on screen
+  function curTexts() {
+    const k1 = NV.cur.c1 != null ? MC.getClass1(NV.cur.c1) : null; const k2 = NV.cur.c2 != null ? MC.getClass2(NV.cur.c2) : null;
+    return { lvl: k1 && clsLevel(k1.c1) != null ? 'مستوى ' + clsLevel(k1.c1) : '—', c1: k1 ? pad2(k1.sort) + '_' + k1.name : '—', c2: k2 ? pad2(k2.sort) + '_' + k2.name : '—' };
+  }
+  function updateNavLabels() { const t = curTexts(); ['lvl', 'c1', 'c2'].forEach((k) => { if (NV.v[k]) NV.v[k].textContent = t[k]; }); }
   const navOpt = (label, on, color, fn, title) => {
     const b = h('button', { class: 'ui-gchip ui-num' + (on ? ' on' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', title: title || '', onclick: fn }, h('i'), label);
     b.style.setProperty('--gc', color || 'var(--bl)'); return b;
   };
-  // after a choice that ends the navigation: fold the whole panel (the list is already filtered, the toggle shows the new choice)
-  const navDone = () => { NV.open = false; NV.list = false; S.limit = STEP; render(); };
+  // y (viewport) below which the list is really visible: under the pinned navigator (phones) / under the sticky header (desktop)
+  function stickyBottom() { const a = el.nav ? el.nav.getBoundingClientRect().bottom : 0; const b = el.top ? el.top.getBoundingClientRect().bottom : 0; return Math.max(a, b, 0); }
+  function scrollListTop() { if (!el.list) return; g.scrollTo(0, Math.max(0, el.list.getBoundingClientRect().top + g.scrollY - stickyBottom() - 6)); updateCur(); }
+  // jump to a lesson: kind = 'c2' | 'c1' | 'lvl'. If a filter hides it, the filter is dropped first.
+  function navTo(kind, id, retry) {
+    const hit = (b) => (kind === 'c2' ? b.c2 === id : kind === 'c1' ? b.c1 === id : clsLevel(b.c1) === id);
+    const idx = blocks.findIndex(hit);
+    if (idx < 0) { if (S.c2.length && !retry) { S.c2 = []; S.c1 = ''; S.limit = STEP; render(); return navTo(kind, id, true); } return false; }
+    if (idx >= shown) { appendBlocks(idx + 30); S.limit = shown; }
+    const t = el.list.querySelector(kind === 'c2' ? '[data-c2="' + id + '"]' : '[data-c1="' + blocks[idx].c1 + '"]'); if (!t) return false;
+    g.scrollTo(0, Math.max(0, t.getBoundingClientRect().top + g.scrollY - stickyBottom() - 6));
+    updateCur(); return true;
+  }
+  // which lesson is on screen? (the first row below the pinned bar)
+  function updateCur() {
+    if (!el.list || !blocks.length) return;
+    const y0 = stickyBottom(); const r = el.list.getBoundingClientRect(); const x = r.left + r.width / 2;
+    for (let dy = 4; dy <= 76; dy += 12) {
+      const e = document.elementFromPoint(x, y0 + dy); const t = e && e.closest ? e.closest('[data-c2]') : null;
+      if (t) { setCur(+t.dataset.c1, +t.dataset.c2); return; }
+    }
+  }
+  function setCur(c1, c2) {
+    if (NV.cur.c1 === c1 && NV.cur.c2 === c2) return;
+    const c1Changed = NV.cur.c1 !== c1; NV.cur = { c1, c2 };
+    updateNavLabels(); saveNav();
+    if (c1Changed && !NV.pop) renderNav();   // the sub-group choices (and its button) belong to the main group on screen
+  }
+  let navTm = 0;
+  const onScroll = () => { if (navTm) return; navTm = g.setTimeout(() => { navTm = 0; updateCur(); }, 70); };
+  const pick = (kind, id) => { NV.tab = ''; NV.pop = false; renderNav(); navTo(kind, id); };
+  const closePop = () => { NV.pop = false; renderNav(); if (NV.popDirty) { NV.popDirty = false; scrollListTop(); } };
+  const clearFilter = () => { const c = NV.cur.c2; S.c2 = []; S.c1 = ''; S.limit = STEP; NV.pop = false; render(); if (c != null) navTo('c2', c); };
+  // keep the open multi-select list inside the window (it is as wide as its content, so on a narrow screen it could run off an edge)
+  function placePop() {
+    const p = MC.$('.ui-ms-pop', el.nav); if (!p) return;
+    p.style.transform = ''; const r = p.getBoundingClientRect(); const W = document.documentElement.clientWidth; let dx = 0;
+    if (r.left < 6) dx = 6 - r.left; else if (r.right > W - 6) dx = W - 6 - r.right;
+    if (dx) p.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+  }
+  function buildPop(o) {
+    const pop = h('div', { class: 'ui-ms-pop', onclick: (e) => e.stopPropagation() });
+    const on = new Set(S.c2.map(String));
+    const setFilter = (ids, live) => { S.c2 = ids; S.c1 = ids.length ? String(o.ctx) : ''; S.limit = STEP; NV.popDirty = true; if (live) { NV.ls = pop.scrollTop; } render(); };
+    pop.appendChild(h('div', { class: 'ui-ms-head' },
+      h('button', { class: 'btn sm', type: 'button', onclick: () => setFilter(o.c2s.map((x) => x.v), true) }, 'تحديد الكل'),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => setFilter([], true) }, 'مسح التحديد')));
+    // automatic selection by order number: «from lesson 3 to 7»
+    if (o.c2s.length) {
+      const nums = MC.class2Of(o.ctx).map((c) => Math.round(c.sort)); const lo = Math.min(...nums); const hi = Math.max(...nums);
+      const mkN = (key, ph) => { const i = h('input', { class: 'inp ui-ms-n', type: 'number', inputmode: 'numeric', min: String(lo), max: String(hi), placeholder: ph, 'aria-label': ph }); i.value = rng[key]; i.addEventListener('input', () => { rng[key] = i.value; }); return i; };
+      const fromI = mkN('from', String(lo)); const toI = mkN('to', String(hi));
+      const apply = () => {
+        const ids = MC.c2Range(o.ctx, rng.from, rng.to);
+        if (!ids.length) { MC.toast('لا توجد مجموعة فرعية بهذه الأرقام (من ' + lo + ' إلى ' + hi + ')', 'err'); return; }
+        NV.tab = ''; NV.pop = false; NV.popDirty = false; S.c2 = ids; S.c1 = String(o.ctx); S.limit = STEP; render(); scrollListTop();
+        MC.toast('تم تحديد ' + ids.length + ' مجموعة فرعية', 'ok');
+      };
+      [fromI, toI].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }));
+      pop.appendChild(h('div', { class: 'ui-ms-rng', title: 'تحديد تلقائي بأرقام الترتيب الظاهرة قبل أسماء المجموعات (مثل 03_)' },
+        h('span', { class: 'ui-dim', text: 'اختيار من درس' }), fromI, h('span', { class: 'ui-dim', text: 'إلى درس' }), toI,
+        h('button', { class: 'btn sm pri', type: 'button', onclick: apply }, 'تحديد')));
+    }
+    o.c2s.forEach((x) => {
+      const cb = h('input', { type: 'checkbox' }); cb.checked = on.has(String(x.v));
+      cb.addEventListener('change', () => setFilter(o.c2s.filter((y) => (String(y.v) === String(x.v) ? cb.checked : on.has(String(y.v)))).map((y) => y.v), true));
+      pop.appendChild(h('label', { class: 'ui-ms-it' }, cb, h('span', { text: x.t })));
+    });
+    return pop;
+  }
   function renderNav() {
-    const o = navOpts;
-    el.navTog.className = 'ui-navtog' + (NV.open ? ' open' : '') + (!NV.open && (S.level || S.c1 || S.c2.length) ? ' has' : '');
-    el.navTog.setAttribute('aria-expanded', NV.open ? 'true' : 'false');
-    el.navTog.title = NV.open ? 'طي التنقل بين الدروس' : 'التنقل بين الدروس: المستوى والمجموعة الرئيسية والفرعية';
-    el.navTog.innerHTML = '';
-    el.navTog.append(MC.ico('layers'), h('span', { class: 'lb', text: NV.open ? 'التنقل بين الدروس' : navSummary() }), h('span', { class: 'chev', text: NV.open ? '▴' : '▾', 'aria-hidden': 'true' }));
-    el.navBody.hidden = !NV.open; el.navBody.innerHTML = '';
-    if (!NV.open) return;
-    if (!S.c1 && NV.tab === 'c2') NV.tab = 'c1';
-    const go = (tab) => { NV.tab = NV.tab === tab ? '' : tab; NV.list = false; saveNav(); renderNav(); };
-    const tab = (key, label, val, disabled) => h('button', { class: 'ui-navtab' + (NV.tab === key ? ' on' : '') + (val ? ' has' : ''), type: 'button', disabled: !!disabled, 'aria-expanded': NV.tab === key ? 'true' : 'false', title: disabled ? 'اختر المجموعة الرئيسية أولًا' : label, onclick: () => go(key) },
-      h('span', { class: 'k', text: label }), h('span', { class: 'v', text: val || 'الكل' }));
-    const lvTxt = S.level ? 'مستوى ' + S.level : '';
-    const c1x = S.c1 ? o.c1s.find((q) => String(q.v) === String(S.c1)) : null;
-    const c2Txt = S.c2.length === 1 ? ((o.c2s.find((q) => String(q.v) === String(S.c2[0])) || {}).t || '') : S.c2.length ? S.c2.length + ' محددة' : '';
-    const row = h('div', { class: 'ui-cl ui-navtabs' }, tab('lvl', 'المستوى', lvTxt), tab('c1', 'المجموعة الرئيسية', c1x ? c1x.s : ''), tab('c2', 'المجموعة الفرعية', c2Txt, !S.c1));
-    // beside the sub-group button: «multi-select» (opens a check-box list) + «from … to …» range
-    if (NV.tab === 'c2' && S.c1) {
-      row.appendChild(h('button', { class: 'ui-gchip ui-multi' + (NV.list ? ' on' : ''), type: 'button', 'aria-expanded': NV.list ? 'true' : 'false', title: 'اختيار أكثر من مجموعة فرعية معًا من قائمة',
-        onclick: () => { NV.list = !NV.list; renderNav(); } }, MC.ico('check'), 'اختيار متعدد' + (S.c2.length > 1 ? ' (' + S.c2.length + ')' : '') + ' ▾'));
-      if (o.c2s.length) {
-        const nums = MC.class2Of(S.c1).map((c) => Math.round(c.sort)); const lo = Math.min(...nums); const hi = Math.max(...nums);
-        const mkN = (key, ph) => { const i = h('input', { class: 'inp ui-ms-n', type: 'number', inputmode: 'numeric', min: String(lo), max: String(hi), placeholder: ph, 'aria-label': ph }); i.value = rng[key]; i.addEventListener('input', () => { rng[key] = i.value; }); return i; };
-        const fromI = mkN('from', String(lo)); const toI = mkN('to', String(hi));
-        const apply = () => {
-          const ids = MC.c2Range(S.c1, rng.from, rng.to);
-          if (!ids.length) { MC.toast('لا توجد مجموعة فرعية بهذه الأرقام (من ' + lo + ' إلى ' + hi + ')', 'err'); return; }
-          S.c2 = ids; navDone();
-          MC.toast('تم تحديد ' + ids.length + ' مجموعة فرعية', 'ok');
-        };
-        [fromI, toI].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }));
-        row.appendChild(h('div', { class: 'ui-ms-rng', title: 'تحديد تلقائي بأرقام الترتيب الظاهرة قبل أسماء المجموعات (مثل 03_)' },
-          h('span', { class: 'ui-dim', text: 'من رقم' }), fromI, h('span', { class: 'ui-dim', text: 'إلى' }), toI,
-          h('button', { class: 'btn sm pri', type: 'button', onclick: apply }, 'تحديد')));
-      }
+    const o = calcOpts(); NV.v = {}; el.nav.innerHTML = '';
+    if (!o.ctx && NV.tab === 'c2') NV.tab = '';
+    const tab = (key, label, disabled) => {
+      const v = h('span', { class: 'v' }); NV.v[key] = v;
+      return h('button', { class: 'ui-navtab has' + (NV.tab === key ? ' on' : ''), type: 'button', disabled: !!disabled, 'aria-expanded': NV.tab === key ? 'true' : 'false', title: disabled ? 'لا يوجد درس ظاهر بعد' : label,
+        onclick: () => { NV.tab = NV.tab === key ? '' : key; NV.pop = false; renderNav(); } }, h('span', { class: 'k', text: label }), v);
+    };
+    const row = h('div', { class: 'ui-cl ui-navtabs' }, tab('lvl', 'المستوى'), tab('c1', 'المجموعة الرئيسية'), tab('c2', 'المجموعة الفرعية', !o.ctx));
+    // beside the sub-group button: «multi-select» opens a normal list with a check box beside every lesson
+    if (NV.tab === 'c2' && o.ctx) {
+      const btn = h('button', { class: 'ui-gchip ui-multi' + (NV.pop || S.c2.length ? ' on' : ''), type: 'button', 'aria-expanded': NV.pop ? 'true' : 'false', title: 'اختيار أكثر من درس من قائمة (يُفلتر العرض)',
+        onclick: (e) => { e.stopPropagation(); if (NV.pop) closePop(); else { NV.pop = true; renderNav(); } } }, MC.ico('check'), 'اختيار متعدد' + (S.c2.length ? ' (' + S.c2.length + ')' : '') + ' ▾');
+      row.appendChild(h('div', { class: 'ui-ms' }, btn, NV.pop ? buildPop(o) : null));
     }
-    el.navBody.appendChild(row);
+    if (S.c2.length) row.appendChild(h('button', { class: 'ui-gchip on ui-flt', type: 'button', title: 'إلغاء التصفية وعرض كل الدروس', onclick: clearFilter }, h('i'), 'مصفّى: ' + S.c2.length + ' ✕'));
+    el.nav.appendChild(row); updateNavLabels();
+    if (NV.pop) { const p = MC.$('.ui-ms-pop', el.nav); if (p) { p.scrollTop = NV.ls || 0; NV.ls = 0; placePop(); } }
     if (!NV.tab) return;
-    // multi-select list: check boxes, filters the view live; «تم» folds the panel
-    if (NV.tab === 'c2' && NV.list && S.c1) {
-      const on = new Set(S.c2.map(String));
-      const items = h('div', { class: 'ui-ms-items' });
-      o.c2s.forEach((x) => {
-        const cb = h('input', { type: 'checkbox' }); cb.checked = on.has(String(x.v));
-        cb.addEventListener('change', () => { NV.ls = items.scrollTop; S.c2 = o.c2s.filter((y) => (String(y.v) === String(x.v) ? cb.checked : on.has(String(y.v)))).map((y) => y.v); S.limit = STEP; render(); });
-        items.appendChild(h('label', { class: 'ui-ms-it' + (cb.checked ? ' on' : '') }, cb, h('span', { text: x.t })));
-      });
-      const box = h('div', { class: 'ui-mslist' },
-        h('div', { class: 'ui-ms-head' },
-          h('button', { class: 'btn sm', type: 'button', onclick: () => { NV.ls = items.scrollTop; S.c2 = o.c2s.map((x) => x.v); S.limit = STEP; render(); } }, 'تحديد الكل'),
-          h('button', { class: 'btn sm', type: 'button', onclick: () => { NV.ls = items.scrollTop; S.c2 = []; S.limit = STEP; render(); } }, 'مسح التحديد'),
-          h('span', { class: 'ui-dim', text: S.c2.length + ' من ' + o.c2s.length }),
-          h('button', { class: 'btn sm pri ui-sp', type: 'button', onclick: navDone }, 'تم')),
-        items);
-      el.navBody.appendChild(box); items.scrollTop = NV.ls || 0; NV.ls = 0;
-      return;
-    }
-    // single choice: number buttons only (full name in the tooltip); the last step folds the panel at once
+    // the choices of the opened button: choosing jumps to that lesson and folds them
     const opts = h('div', { class: 'ui-navopts' });
-    if (NV.tab === 'lvl') {
-      opts.appendChild(navOpt('الكل', !S.level, 'var(--tx)', () => { S.level = ''; S.limit = STEP; render(); }, 'كل المستويات'));
-      o.lvls.forEach((x) => opts.appendChild(navOpt(String(x.v), String(S.level) === String(x.v), 'var(--bl)', () => { S.level = String(x.v); NV.tab = 'c1'; S.limit = STEP; render(); }, x.t)));
-    } else if (NV.tab === 'c1') {
-      opts.appendChild(navOpt('الكل', !S.c1, 'var(--tx)', () => { S.c1 = ''; S.c2 = []; navDone(); }, 'كل المجموعات الرئيسية'));
-      o.c1s.forEach((x) => opts.appendChild(navOpt((S.group === 'all' ? x.g + ' ' : '') + x.n, String(S.c1) === String(x.v), x.color, () => { S.c1 = String(x.v); S.c2 = []; NV.tab = 'c2'; NV.list = false; S.limit = STEP; render(); }, x.t)));
-    } else if (S.c1) {
-      const on = new Set(S.c2.map(String)); const color = (o.c1s.find((q) => String(q.v) === String(S.c1)) || {}).color;
-      opts.appendChild(navOpt('الكل', !S.c2.length, 'var(--tx)', () => { S.c2 = []; navDone(); }, 'كل المجموعات الفرعية'));
-      o.c2s.forEach((x) => opts.appendChild(navOpt(x.n, on.has(String(x.v)), color, () => { S.c2 = on.size === 1 && on.has(String(x.v)) ? [] : [x.v]; navDone(); }, x.t)));
+    const cL = clsLevel(NV.cur.c1);
+    if (NV.tab === 'lvl') o.lvls.forEach((x) => opts.appendChild(navOpt(String(x.v), cL === x.v, 'var(--bl)', () => pick('lvl', x.v), x.t)));
+    else if (NV.tab === 'c1') o.c1s.forEach((x) => opts.appendChild(navOpt(x.t, String(NV.cur.c1) === String(x.v), x.color, () => pick('c1', x.v), x.t)));
+    else {
+      const color = (o.c1s.find((q) => String(q.v) === String(o.ctx)) || {}).color;
+      o.c2s.forEach((x) => opts.appendChild(navOpt(x.n, String(NV.cur.c2) === String(x.v), color, () => pick('c2', x.v), x.t)));
     }
-    el.navBody.appendChild(opts);
+    el.nav.appendChild(opts);
   }
   function renderFilters() {
-    // levels that exist in the current data group; choosing one narrows the main-group list (and the shown items), choosing none leaves everything available
-    const lv = new Set(); MC.groupsSorted().forEach((gr) => { if (S.group !== 'all' && gr.group !== S.group) return; MC.class1Of(gr.group).forEach((c) => { if (c.level != null && c.level !== '' && Number.isFinite(+c.level)) lv.add(+c.level); }); });
-    const lvls = Array.from(lv).sort((a, b) => a - b).map((n) => ({ v: n, t: 'مستوى ' + n }));
-    if (S.level && !lvls.some((o) => String(o.v) === String(S.level))) S.level = '';
-    const c1s = []; MC.groupsSorted().forEach((gr) => { if (S.group !== 'all' && gr.group !== S.group) return; MC.class1Of(gr.group).forEach((c) => (S.level && String(c.level) !== String(S.level) ? 0 : c1s.push({ v: c.c1, n: pad2(c.sort), g: gr.label_ar, s: pad2(c.sort) + '_' + c.name, t: (S.group === 'all' ? gr.label_ar + ' › ' : '') + pad2(c.sort) + '_' + c.name, color: MC.groupStyle(gr.group).color }))); });
-    if (S.c1 && !c1s.some((o) => String(o.v) === String(S.c1))) { S.c1 = ''; S.c2 = []; }
-    const c2s = S.c1 ? MC.class2Of(S.c1).map((c) => ({ v: c.c2, n: pad2(c.sort), t: pad2(c.sort) + '_' + c.name })) : [];
-    S.c2 = S.c2.filter((id) => c2s.some((o) => String(o.v) === String(id)));
-    navOpts = { lvls, c1s, c2s }; renderNav();
+    const o = calcOpts();
+    // a filter whose main group no longer exists (e.g. after switching the data source) is dropped
+    if (S.c2.length) { const ids = new Set(MC.class2Of(S.c1).map((c) => c.c2)); S.c2 = S.c2.filter((id) => ids.has(id)); if (!S.c2.length) S.c1 = ''; }
+    if (NV.cur.c1 != null && !o.c1s.some((x) => String(x.v) === String(NV.cur.c1))) NV.cur = { c1: null, c2: null };
+    renderNav();
     el.dup.classList.toggle('on', S.dupOnly);
     el.hid.innerHTML = MC.icon(S.hiddenMode === 'only' ? 'show' : 'hide') + (S.hiddenMode === 'only' ? ' عرض العادية' : ' المخفية') + ' <span class="n">' + MC.hiddenCount() + '</span>';
     el.hid.classList.toggle('on', S.hiddenMode === 'only'); el.hid.hidden = !MC.hiddenCount() && S.hiddenMode !== 'only';
@@ -5641,8 +5660,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const chk = '<label class="ui-sel"><input type="checkbox" data-act="sel"' + (sel ? ' checked' : '') + ' aria-label="تحديد"></label>';
     const no = MC.settings.showSort ? '<span class="ui-no">' + Math.round(v.sort) + '</span>' : '';
     const open = S.openId === v.id ? ' open' : '';
-    if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + actsHTML(v, reorder) + '</div>';
-    return '<div class="ui-it' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + actsHTML(v, reorder) + '</div>';
+    if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + actsHTML(v, reorder) + '</div>';
+    return '<div class="ui-it' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + actsHTML(v, reorder) + '</div>';
   }
   function buildBlocks() {
     const out = []; const grouped = MC.settings.grouped; let c1 = null; let c2 = null; const n1 = new Map(); const n2 = new Map();
@@ -5655,10 +5674,10 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const reorder = grouped && !S.q && !S.dupOnly;
     S.views.forEach((v) => {
       if (grouped) {
-        if (v.c1 !== c1) { c1 = v.c1; c2 = null; out.push({ h: '<div class="ui-h1" style="' + groupColors(v.group) + '">' + hsel('c1', v.c1, 'تحديد كل ما هو معروض في هذه المجموعة الرئيسية') + ord(MC.getClass1(v.c1), 'ترتيب المجموعة الرئيسية') + '<span>' + esc(v.groupLabel) + '</span><span class="sep">›</span><b>' + esc(v.c1name) + '</b>' + (v.level ? '<span class="tag">مستوى ' + v.level + '</span>' : '') + (v.link ? '<a href="' + esc(v.link) + '" target="_blank" rel="noopener">' + MC.icon('link') + ' فتح الرابط</a>' : '') + '<span class="n">' + n1.get(v.c1) + '</span></div>' }); }
-        if (v.c2 !== c2) { c2 = v.c2; out.push({ h: '<div class="ui-h2" style="' + groupColors(v.group) + '">' + hsel('c2', v.c2, 'تحديد كل ما هو معروض في هذه المجموعة الفرعية') + ord(MC.getClass2(v.c2), 'ترتيب المجموعة الفرعية') + esc(v.c2name) + ' <span class="n">' + n2.get(v.c2) + '</span><button class="btn sm" data-act="addc2" data-c2="' + v.c2 + '" title="إضافة عنصر في هذه المجموعة الفرعية">' + MC.icon('add') + ' إضافة هنا</button></div>' }); }
+        if (v.c1 !== c1) { c1 = v.c1; c2 = null; out.push({ c1: v.c1, c2: v.c2, h: '<div class="ui-h1" data-c1="' + v.c1 + '" style="' + groupColors(v.group) + '">' + hsel('c1', v.c1, 'تحديد كل ما هو معروض في هذه المجموعة الرئيسية') + ord(MC.getClass1(v.c1), 'ترتيب المجموعة الرئيسية') + '<span>' + esc(v.groupLabel) + '</span><span class="sep">›</span><b>' + esc(v.c1name) + '</b>' + (v.level ? '<span class="tag">مستوى ' + v.level + '</span>' : '') + (v.link ? '<a href="' + esc(v.link) + '" target="_blank" rel="noopener">' + MC.icon('link') + ' فتح الرابط</a>' : '') + '<span class="n">' + n1.get(v.c1) + '</span></div>' }); }
+        if (v.c2 !== c2) { c2 = v.c2; out.push({ c1: v.c1, c2: v.c2, h: '<div class="ui-h2" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '">' + hsel('c2', v.c2, 'تحديد كل ما هو معروض في هذه المجموعة الفرعية') + ord(MC.getClass2(v.c2), 'ترتيب المجموعة الفرعية') + esc(v.c2name) + ' <span class="n">' + n2.get(v.c2) + '</span><button class="btn sm" data-act="addc2" data-c2="' + v.c2 + '" title="إضافة عنصر في هذه المجموعة الفرعية">' + MC.icon('add') + ' إضافة هنا</button></div>' }); }
       }
-      out.push({ h: itemHTML(v, reorder, MC.settings.view === 'cards') });
+      out.push({ c1: v.c1, c2: v.c2, h: itemHTML(v, reorder, MC.settings.view === 'cards') });
     });
     return out;
   }
@@ -5732,8 +5751,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
 
   // the chosen main / sub groups are remembered in this browser (the data group chip is kept in the settings)
-  const saveNav = () => { MC.store.set('mc.nav.v1', { level: S.level || '', c1: S.c1 || '', c2: S.c2.slice(), open: !!NV.open, tab: NV.tab || '' }); };
-  function render() { compute(); renderChips(); renderFilters(); saveNav(); renderInfo(); renderList(); renderSelbar(); }
+  const saveNav = () => { MC.store.set('mc.nav.v2', { c1: S.c1 || '', c2: S.c2.slice(), cur: { c1: NV.cur.c1, c2: NV.cur.c2 } }); };
+  function render() {
+    compute(); renderChips(); renderFilters(); saveNav(); renderInfo(); renderList(); renderSelbar();
+    // first time the list has rows: go back to the lesson that was on screen last time
+    if (!NV.restored && blocks.length) { NV.restored = true; if (NV.cur.c2 != null) navTo('c2', NV.cur.c2, true); }
+    g.setTimeout(updateCur, 0);
+  }
   UI.render = render;
 
   /* ---------- boot ---------- */
@@ -5751,8 +5775,11 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   UI.start = () => {
     MC.load(); MC.applyFontVars();
     S.group = MC.settings.group || 'all'; if (S.group !== 'all' && !MC.getGroup(S.group)) S.group = 'all';
-    const nav = MC.store.get('mc.nav.v1', {}) || {}; S.level = nav.level ? String(nav.level) : ''; S.c1 = nav.c1 ? String(nav.c1) : ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : [];
-    NV.open = !!nav.open; NV.tab = ['lvl', 'c1', 'c2'].indexOf(nav.tab) >= 0 ? nav.tab : '';   // renderFilters drops anything that no longer exists
+    const nav = MC.store.get('mc.nav.v2', {}) || {};
+    S.level = ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : []; S.c1 = S.c2.length && nav.c1 ? String(nav.c1) : '';   // only the multi-select filter is restored as a filter
+    const cu = nav.cur || {}; NV.cur = { c1: cu.c1 != null && Number.isFinite(+cu.c1) ? +cu.c1 : null, c2: cu.c2 != null && Number.isFinite(+cu.c2) ? +cu.c2 : null };   // the lesson that was on screen
+    g.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('click', () => { if (NV.pop) closePop(); });
     buildShell(); renderBanner(); render();
     MC.on('data', () => { const ids = new Set(MC.data.items.map((i) => i.id)); S.sel.forEach((id) => { if (!ids.has(id)) S.sel.delete(id); }); renderBanner(); render(); });
     MC.on('settings', (p) => { if (/^(hidden|view|grouped|showSort)/.test(p)) render(); });

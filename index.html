@@ -400,6 +400,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .has-selbar .ui-totop { bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
 @media print { .ui-totop { display: none !important; } }
 
+/* phones: single tap = focus (highlight) on the word, long press = its action buttons */
+@media (max-width: 720px) {
+  .ui-it.focus { background: var(--bll); border-color: var(--bl); } .ui-cd.focus { background: var(--bll); outline: 2px solid var(--bl); }
+  .ui-it .ui-cells, .ui-cd .t-zh, .ui-cd .t-pin, .ui-cd .t-ar, .ui-cd .t-en { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
+
 /* ===== quiz.css ===== */
 /* ============================================================
    quiz.css — quiz wizard + scores statistics. All classes prefixed qz-.
@@ -5483,6 +5489,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
 
     // delegated events for the list
     el.list.addEventListener('click', onListClick);
+    lpSetup();
     el.list.addEventListener('change', (e) => {
       const t = e.target; if (!t.matches) return;
       if (t.matches('input[data-act="selgrp"]')) { // header checkbox: select / unselect everything DISPLAYED in that group
@@ -5509,17 +5516,43 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
   function bumpFont(d) { MC.setSetting('font.all', Math.max(60, Math.min(220, MC.settings.font.all + d))); MC.toast('حجم الخط: ' + MC.settings.font.all + '%'); }
 
-  // phones: tapping a word plays it and shows its action buttons; tapping the same word again plays it again (the buttons stay);
-  // tapping another word moves the buttons to it, and tapping anywhere else hides them
+  // phones: a single tap plays the word and puts the focus on it (no buttons); a long press shows its action buttons, a second long press hides them.
+  // Tapping another word / anywhere else hides the buttons; tapping the same word again just plays it again.
   const isPhone = () => !!(g.matchMedia && g.matchMedia('(max-width: 720px)').matches);
-  function openRow(row) {
-    const id = +row.dataset.id; if (S.openId === id) return; S.openId = id;
-    MC.$$('.ui-it.open, .ui-cd.open', el.list).forEach((r) => r.classList.remove('open'));
-    row.classList.add('open');
+  const rowsOf = (cls) => MC.$$('.ui-it.' + cls + ', .ui-cd.' + cls, el.list);
+  function focusRow(row) {
+    const id = +row.dataset.id; if (S.focusId === id) return; S.focusId = id;
+    rowsOf('focus').forEach((r) => r.classList.remove('focus')); row.classList.add('focus');
   }
-  function closeOpen() { if (S.openId == null) return; S.openId = null; MC.$$('.ui-it.open, .ui-cd.open', el.list).forEach((r) => r.classList.remove('open')); }
+  function closeActs() { if (S.openId == null) return; S.openId = null; rowsOf('open').forEach((r) => r.classList.remove('open')); }
+  function clearTapState() { closeActs(); if (S.focusId != null) { S.focusId = null; rowsOf('focus').forEach((r) => r.classList.remove('focus')); } }
+  function toggleActs(row) {
+    const id = +row.dataset.id; focusRow(row);
+    if (S.openId === id) { closeActs(); return; }
+    closeActs(); S.openId = id; row.classList.add('open');
+    try { if (g.navigator && g.navigator.vibrate) g.navigator.vibrate(15); } catch (e) { /* ignore */ }
+  }
+  // long press detection (cancelled by moving, i.e. scrolling, or by lifting the finger early)
+  let lp = null; let lpSup = false;
+  const lpCancel = () => { if (lp) { g.clearTimeout(lp.t); lp = null; } };
+  const lpSetup = () => {
+    el.list.addEventListener('pointerdown', (e) => {
+      lpSup = false; lpCancel();
+      if (!isPhone() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (e.target.closest('[data-act], a, label, input, button, select')) return;
+      const row = e.target.closest('.ui-it, .ui-cd'); if (!row) return;
+      lp = { x: e.clientX, y: e.clientY, t: g.setTimeout(() => { lp = null; lpSup = true; toggleActs(row); }, 480) };
+    });
+    el.list.addEventListener('pointermove', (e) => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) lpCancel(); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((n) => el.list.addEventListener(n, lpCancel));
+    el.list.addEventListener('contextmenu', (e) => { if (isPhone() && e.target.closest && e.target.closest('.ui-it, .ui-cd')) e.preventDefault(); });
+  };
   function onListClick(e) {
-    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) { const row = e.target.closest('.ui-it, .ui-cd'); if (row) { const it = MC.canSpeak() ? MC.getItem(+row.dataset.id) : null; if (it) MC.speak(it.zh); openRow(row); return; } }
+    if (lpSup) { lpSup = false; return; }   // the click that ends a long press is not a tap
+    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) {
+      const row = e.target.closest('.ui-it, .ui-cd');
+      if (row) { const id = +row.dataset.id; const it = MC.canSpeak() ? MC.getItem(id) : null; if (it) MC.speak(it.zh); if (S.openId != null && S.openId !== id) closeActs(); focusRow(row); return; }
+    }
     const b = e.target.closest('[data-act]'); if (!b || b.matches('input')) return;
     const row = b.closest('[data-id]'); const id = row ? +row.dataset.id : null; const act = b.dataset.act;
     if (act === 'edit') UI.openItemDialog({ mode: 'edit', id });
@@ -5789,7 +5822,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const sel = S.sel.has(v.id); const cells = MC.visibleLangs().map((k) => '<div class="t-' + k + '"' + (k === 'zh' ? ' lang="zh-CN"' : '') + '>' + esc(v[k]) + '</div>').join('');
     const chk = '<label class="ui-sel"><input type="checkbox" data-act="sel"' + (sel ? ' checked' : '') + ' aria-label="تحديد"></label>';
     const no = MC.settings.showSort ? '<span class="ui-no">' + Math.round(v.sort) + '</span>' : '';
-    const open = S.openId === v.id ? ' open' : '';
+    const open = (S.openId === v.id ? ' open' : '') + (S.focusId === v.id ? ' focus' : '');
     if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + actsHTML(v, reorder) + '</div>';
     return '<div class="ui-it' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + actsHTML(v, reorder) + '</div>';
   }
@@ -5909,7 +5942,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     S.level = ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : []; S.c1 = S.c2.length && nav.c1 ? String(nav.c1) : '';   // only the multi-select filter is restored as a filter
     const cu = nav.cur || {}; NV.cur = { c1: cu.c1 != null && Number.isFinite(+cu.c1) ? +cu.c1 : null, c2: cu.c2 != null && Number.isFinite(+cu.c2) ? +cu.c2 : null };   // the lesson that was on screen
     g.addEventListener('scroll', onScroll, { passive: true });
-    document.addEventListener('click', (e) => { if (S.openId != null && isPhone() && !(e.target.closest && e.target.closest('.ui-it, .ui-cd'))) closeOpen(); });   // phones: a tap outside the words hides the open word's buttons
+    document.addEventListener('click', (e) => { if ((S.openId != null || S.focusId != null) && isPhone() && !(e.target.closest && e.target.closest('.ui-it, .ui-cd'))) clearTapState(); });   // phones: a tap outside the words hides the buttons / focus
     document.addEventListener('click', () => { if (NV.pop) closePop(); });
     buildShell(); renderBanner(); render();
     MC.on('data', () => { const ids = new Set(MC.data.items.map((i) => i.id)); S.sel.forEach((id) => { if (!ids.has(id)) S.sel.delete(id); }); renderBanner(); render(); });

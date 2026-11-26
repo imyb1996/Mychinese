@@ -388,6 +388,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-rsearch .ui-search { flex: 1 1 auto; min-width: 140px; }
 .ui-scope { flex: none; white-space: nowrap; min-height: 30px; } .ui-scope.on { background: var(--bl); border-color: var(--bl); color: #fff; } .ui-scope.on .ic { color: #fff; }
 
+/* data-source tabs pinned with the navigator on phones */
+.ui-rsrc:empty { display: none; }
+.ui-rsrc { padding-block: 3px; } .ui-rsrc .ui-groups { padding: 0; width: 100%; }
+@media (max-width: 720px) { .ui-rsrc .ui-gchip { padding: 3px 9px; font-size: 12px; } .ui-r1 .ui-c-tabs:empty { display: none; } }
+
+/* bottom button: scroll to the top, then (same button) back to where you were */
+.ui-totop { position: fixed; z-index: 45; inset-inline-end: 14px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: 6px; min-width: 44px; height: 44px; padding: 0 12px; justify-content: center; border-radius: 22px; border: 1.5px solid var(--bl); background: var(--bl); color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.ui-totop[hidden] { display: none; }
+.ui-totop.back { background: var(--card); color: var(--bl); }
+.has-selbar .ui-totop { bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+@media print { .ui-totop { display: none !important; } }
+
 /* ===== quiz.css ===== */
 /* ============================================================
    quiz.css — quiz wizard + scores statistics. All classes prefixed qz-.
@@ -5390,6 +5402,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const UI = (MC.UI = MC.UI || {});
   const rng = { from: '', to: '' };   // the «from … to …» sub-group range typed in the sub-group menu (kept while the menu re-renders)
   const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', searchAll: false, dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
+  const TP = { mode: 'up', y: 0 };   // bottom button: 'up' = scroll to the top (remembers where you were), then 'back' = return to that place
   const NV = { tab: '', pop: false, popDirty: false, ls: 0, cur: { c1: null, c2: null }, v: {}, restored: false };   // lesson navigator state: opened button, multi-select list open?, lesson on screen
 
   const pad2 = (n) => String(Math.round(n)).padStart(2, '0');
@@ -5453,15 +5466,20 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     // Three rows, each split into clusters separated by a divider:
     //  1) logo + title | source tabs   (lesson navigator right under it)   2) add | print | quiz | settings + data   3) search | view buttons
     const top = h('header', { class: 'ui-top' },
-      h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), cluster('ui-c-tabs', el.chips)),
-      (el.pin = h('div', { class: 'ui-pin' }, h('div', { class: 'ui-row ui-rnav' }, el.nav), h('div', { class: 'ui-row ui-rsearch' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear), el.scope)))),
+      h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), (el.tabsCl = cluster('ui-c-tabs', el.chips))),
+      (el.pin = h('div', { class: 'ui-pin' }, (el.srcRow = h('div', { class: 'ui-row ui-rsrc' })), h('div', { class: 'ui-row ui-rnav' }, el.nav), h('div', { class: 'ui-row ui-rsearch' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear), el.scope)))),
       h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, clsBtn, dataBtn)),
       h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
     el.top = top;
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });
     el.selbar = h('div', { class: 'ui-selbar', hidden: true });
-    root.append(top, el.banner, el.list, el.more, el.selbar);
+    el.totop = h('button', { class: 'ui-totop', type: 'button', hidden: true, onclick: toggleTop });
+    root.append(top, el.banner, el.list, el.more, el.selbar, el.totop);
+    // phones: the data-source tabs live in the pinned block too (so the source can be switched from anywhere in the list)
+    const mq = g.matchMedia ? g.matchMedia('(max-width: 720px)') : null;
+    const placeChips = () => { (mq && mq.matches ? el.srcRow : el.tabsCl).appendChild(el.chips); };
+    placeChips(); if (mq) { if (mq.addEventListener) mq.addEventListener('change', placeChips); else if (mq.addListener) mq.addListener(placeChips); }
 
     // delegated events for the list
     el.list.addEventListener('click', onListClick);
@@ -5597,8 +5615,27 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     updateNavLabels(); saveNav();
     if (c1Changed && !NV.pop) renderNav();   // the sub-group choices (and its button) belong to the main group on screen
   }
+  const ICO_UP = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  const ICO_BACK = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
+  let topShown = '';
+  function updTop() {
+    if (!el.totop) return;
+    const y = g.scrollY;
+    if (TP.mode === 'back' && y > 200) TP.mode = 'up';            // you scrolled somewhere else yourself: forget the remembered place
+    const show = TP.mode === 'back' || y > 300;
+    el.totop.hidden = !show; if (!show || topShown === TP.mode) return;
+    topShown = TP.mode;
+    el.totop.className = 'ui-totop' + (TP.mode === 'back' ? ' back' : '');
+    el.totop.innerHTML = (TP.mode === 'back' ? ICO_BACK + '<span>العودة لمكانك</span>' : ICO_UP);
+    el.totop.title = TP.mode === 'back' ? 'العودة إلى المكان الذي كنت فيه' : 'الصعود إلى أعلى الصفحة';
+  }
+  function toggleTop() {
+    if (TP.mode === 'up') { TP.y = g.scrollY; TP.mode = 'back'; g.scrollTo(0, 0); }
+    else { const y = TP.y; TP.mode = 'up'; g.scrollTo(0, y); }
+    topShown = ''; updTop(); updateCur();
+  }
   let navTm = 0;
-  const onScroll = () => { if (navTm) return; navTm = g.setTimeout(() => { navTm = 0; updateCur(); }, 70); };
+  const onScroll = () => { updTop(); if (navTm) return; navTm = g.setTimeout(() => { navTm = 0; updateCur(); }, 70); };
   const pick = (kind, id) => { NV.tab = ''; NV.pop = false; renderNav(); navTo(kind, id); };
   const closePop = () => { NV.pop = false; renderNav(); if (NV.popDirty) { NV.popDirty = false; scrollListTop(); } };
   const clearFilter = () => { const c = NV.cur.c2; S.c2 = []; S.c1 = ''; S.limit = STEP; NV.pop = false; render(); if (c != null) navTo('c2', c); };
@@ -5823,7 +5860,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     MC.toast('تم مسح درجات ' + withScore + ' عنصرًا', 'ok');
   }
   function renderSelbar() {
-    const n = S.sel.size; el.selbar.hidden = !n; if (!n) return;
+    const n = S.sel.size; el.selbar.hidden = !n; document.body.classList.toggle('has-selbar', !!n); if (!n) return;
     el.selbar.innerHTML = '';
     const showMode = S.hiddenMode === 'only';
     el.selbar.append(
@@ -5844,7 +5881,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   // the chosen main / sub groups are remembered in this browser (the data group chip is kept in the settings)
   const saveNav = () => { MC.store.set('mc.nav.v2', { c1: S.c1 || '', c2: S.c2.slice(), cur: { c1: NV.cur.c1, c2: NV.cur.c2 } }); };
   function render() {
-    compute(); renderChips(); renderFilters(); saveNav(); renderInfo(); renderList(); renderSelbar();
+    TP.mode = 'up'; topShown = ''; compute(); renderChips(); renderFilters(); saveNav(); renderInfo(); renderList(); renderSelbar(); updTop();
     // first time the list has rows: go back to the lesson that was on screen last time
     if (!NV.restored && blocks.length) { NV.restored = true; if (NV.cur.c2 != null) navTo('c2', NV.cur.c2, true); }
     g.setTimeout(updateCur, 0);

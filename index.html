@@ -305,11 +305,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-r3 .ui-info > span, .ui-r3 .ui-info > .chip { font-size: 12px; }
 @media (max-width: 720px) { .ui-r3 .ui-c-info { width: 100%; justify-content: flex-start; } .ui-r3 .ui-info { justify-content: flex-start; } }
 
-/* ============ phones: words stacked tightly; action buttons appear only after tapping the word ============ */
+/* ============ phones: words stacked tightly; listen button always visible, the other action buttons appear after tapping the word ============ */
 @media (max-width: 720px) {
   .ui-it, .ui-cd { cursor: pointer; }
   .ui-it { padding: 5px 8px; margin-bottom: 2px; gap: 6px; border-radius: 8px; border-inline-start-width: 4px; }
-  .ui-it .ui-acts, .ui-cd .ui-acts { display: none; }
+  /* the listen (speak) button is always visible; the other buttons appear after tapping the word */
+  .ui-it .ui-acts, .ui-cd .ui-acts { display: flex; }
+  .ui-it:not(.open) .ui-acts button:not([data-act="speak"]), .ui-cd:not(.open) .ui-acts button:not([data-act="speak"]) { display: none; }
+  .ui-it:not(.open) .ui-acts { margin-inline-start: auto; align-self: center; flex: none; }
+  .ui-cd:not(.open) .ui-acts { justify-content: flex-end; margin-top: 0; }
+  .ui-it:not(.open) { flex-wrap: nowrap; align-items: center; } .ui-it:not(.open) .ui-cells { flex: 1 1 0; min-width: 0; }   /* the listen button sits on the word's own line */
+  .ui-it:not(.open) .ui-acts button[data-act="speak"], .ui-cd:not(.open) .ui-acts button[data-act="speak"] { width: 38px; height: 34px; }
   .ui-it.open { background: var(--bll); border-color: var(--bl); }
   .ui-it.open .ui-acts { display: flex; flex: 1 1 100%; width: 100%; justify-content: space-between; gap: 2px; margin: 3px 0 0; padding-top: 5px; border-top: 1px dashed var(--bd); }
   .ui-it.open .ui-acts button { flex: 1 1 0; width: auto; height: 38px; }

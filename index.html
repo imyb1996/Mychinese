@@ -5523,7 +5523,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     if (!was) row.classList.add('open');
   }
   function onListClick(e) {
-    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) { const row = e.target.closest('.ui-it, .ui-cd'); if (row) { toggleOpen(row); return; } }
+    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) { const row = e.target.closest('.ui-it, .ui-cd'); if (row) { const it = MC.canSpeak() ? MC.getItem(+row.dataset.id) : null; if (it) MC.speak(it.zh); toggleOpen(row); return; } }   // tapping a word plays it, and still shows / hides its action buttons
     const b = e.target.closest('[data-act]'); if (!b || b.matches('input')) return;
     const row = b.closest('[data-id]'); const id = row ? +row.dataset.id : null; const act = b.dataset.act;
     if (act === 'edit') UI.openItemDialog({ mode: 'edit', id });

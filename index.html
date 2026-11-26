@@ -5510,15 +5510,17 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   }
   function bumpFont(d) { MC.setSetting('font.all', Math.max(60, Math.min(220, MC.settings.font.all + d))); MC.toast('حجم الخط: ' + MC.settings.font.all + '%'); }
 
-  // phones: the action buttons of a word are shown only after tapping the word, and hidden again on the next tap (saves vertical space)
+  // phones: tapping a word plays it and shows its action buttons; tapping the same word again plays it again (the buttons stay);
+  // tapping another word moves the buttons to it, and tapping anywhere else hides them
   const isPhone = () => !!(g.matchMedia && g.matchMedia('(max-width: 720px)').matches);
-  function toggleOpen(row) {
-    const id = +row.dataset.id; const was = S.openId === id; S.openId = was ? null : id;
+  function openRow(row) {
+    const id = +row.dataset.id; if (S.openId === id) return; S.openId = id;
     MC.$$('.ui-it.open, .ui-cd.open', el.list).forEach((r) => r.classList.remove('open'));
-    if (!was) row.classList.add('open');
+    row.classList.add('open');
   }
+  function closeOpen() { if (S.openId == null) return; S.openId = null; MC.$$('.ui-it.open, .ui-cd.open', el.list).forEach((r) => r.classList.remove('open')); }
   function onListClick(e) {
-    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) { const row = e.target.closest('.ui-it, .ui-cd'); if (row) { const it = MC.canSpeak() ? MC.getItem(+row.dataset.id) : null; if (it) MC.speak(it.zh); toggleOpen(row); return; } }   // tapping a word plays it, and still shows / hides its action buttons
+    if (isPhone() && !e.target.closest('[data-act], a, label, input, button, select')) { const row = e.target.closest('.ui-it, .ui-cd'); if (row) { const it = MC.canSpeak() ? MC.getItem(+row.dataset.id) : null; if (it) MC.speak(it.zh); openRow(row); return; } }
     const b = e.target.closest('[data-act]'); if (!b || b.matches('input')) return;
     const row = b.closest('[data-id]'); const id = row ? +row.dataset.id : null; const act = b.dataset.act;
     if (act === 'edit') UI.openItemDialog({ mode: 'edit', id });
@@ -5908,6 +5910,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     S.level = ''; S.c2 = Array.isArray(nav.c2) ? nav.c2.map(Number).filter(Number.isFinite) : []; S.c1 = S.c2.length && nav.c1 ? String(nav.c1) : '';   // only the multi-select filter is restored as a filter
     const cu = nav.cur || {}; NV.cur = { c1: cu.c1 != null && Number.isFinite(+cu.c1) ? +cu.c1 : null, c2: cu.c2 != null && Number.isFinite(+cu.c2) ? +cu.c2 : null };   // the lesson that was on screen
     g.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('click', (e) => { if (S.openId != null && isPhone() && !(e.target.closest && e.target.closest('.ui-it, .ui-cd'))) closeOpen(); });   // phones: a tap outside the words hides the open word's buttons
     document.addEventListener('click', () => { if (NV.pop) closePop(); });
     buildShell(); renderBanner(); render();
     MC.on('data', () => { const ids = new Set(MC.data.items.map((i) => i.id)); S.sel.forEach((id) => { if (!ids.has(id)) S.sel.delete(id); }); renderBanner(); render(); });

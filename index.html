@@ -305,12 +305,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-r3 .ui-info > span, .ui-r3 .ui-info > .chip { font-size: 12px; }
 @media (max-width: 720px) { .ui-r3 .ui-c-info { width: 100%; justify-content: flex-start; } .ui-r3 .ui-info { justify-content: flex-start; } }
 
-/* ============ phones: words stacked tightly; tapping a word plays it and shows its action buttons (no separate listen button) ============ */
+/* ============ phones: words stacked tightly; tapping a word plays it and shows its action buttons (including listen) ============ */
 @media (max-width: 720px) {
   .ui-it, .ui-cd { cursor: pointer; }
   .ui-it { padding: 5px 8px; margin-bottom: 2px; gap: 6px; border-radius: 8px; border-inline-start-width: 4px; }
   .ui-it .ui-acts, .ui-cd .ui-acts { display: none; }
-  .ui-acts button[data-act="speak"] { display: none !important; }   /* tapping the word plays it, so no separate listen button on phones */
   .ui-it.open { background: var(--bll); border-color: var(--bl); }
   .ui-it.open .ui-acts { display: flex; flex: 1 1 100%; width: 100%; justify-content: space-between; gap: 2px; margin: 3px 0 0; padding-top: 5px; border-top: 1px dashed var(--bd); }
   .ui-it.open .ui-acts button { flex: 1 1 0; width: auto; height: 38px; }

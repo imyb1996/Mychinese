@@ -959,7 +959,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   // regex source for one syllable: marked letters / a given tone must match exactly, plain vowels accept any tone
   const sylLoose = (s) => s.split('').map((ch) => (TONEV[ch] ? '[' + ch + TONEV[ch] + ']' : escRe(ch))).join('');
   const fixU = (s) => (/^[jqxy]ü/.test(s) ? s[0] + 'u' + s.slice(2) : s);   // jü / qü / xü / yü are spelled ju / qu / xu / yu
-  function pinChain(t) {
+  function pinChain(t, full) {
     const runs = t.match(RUNRE) || [];
     if (runs.join('') !== t || runs.some((r) => !RUNOK.test(r))) return null;
     if (!runs.some((r) => /[0-5]$/.test(r)) && !MARKRE.test(t)) return null;   // nothing asks for tone-aware matching
@@ -973,7 +973,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         else parts.push(MARKRE.test(s) ? escRe(s) : sylLoose(s));
       });
     });
-    return parts.length ? new RegExp('(?:^| )' + parts.join(' ') + '(?= |$)') : null;
+    return parts.length ? new RegExp(full ? '^' + parts.join(' ') + '$' : '(?:^| )' + parts.join(' ') + '(?= |$)') : null;
   }
   function compileTok(raw) {
     const t = raw.normalize('NFC').toLowerCase();
@@ -996,6 +996,17 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     if (!c) { const sy = pinSylls(it.pin); c = { g: blobOf(it), f: [it.zh, it.pin, it.ar, it.en].map((v) => MC.norm(v)), ps: sy.join(' '), pvc: stripTones(sy.join('')) }; m.set(it.id, c); }
     return c;
   }
+  // «direct typing test» answer check for pinyin, by the same rules as the search: tone numbers / tone marks typed on a syllable must match its tone,
+  // a syllable typed without any tone matches any tone, v / ü / u: = ü, spaces and punctuation ignored. null = empty answer.
+  MC.pinCheck = (typed, correct) => {
+    const tl = String(typed == null ? '' : typed).normalize('NFC').toLowerCase().replace(/u:/g, 'ü').replace(/ɑ/g, 'a').replace(/ɡ/g, 'g').replace(new RegExp('[^' + PLET + '0-5]+', 'g'), '');
+    if (!tl.replace(/[0-5]/g, '')) return null;
+    const alts = [String(correct == null ? '' : correct)].concat(String(correct == null ? '' : correct).split(/[/;؛|،]/));
+    const re = pinChain(tl, true);
+    if (re) return alts.some((a) => re.test(pinSylls(a).join(' ')));
+    const tv = stripTones(pinSylls(tl).join(''));
+    return alts.some((a) => stripTones(pinSylls(a).join('')) === tv);
+  };
   // text → function(item) or null (empty query). All words must match.
   MC.matcher = (q) => {
     const ws = String(q == null ? '' : q).split(/\s+/).filter(Boolean); if (!ws.length) return null;
@@ -3662,6 +3673,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     return s;
   }
   function check(lang, typed, correct) {
+    if (lang === 'pin') return MC.pinCheck(typed, correct);   // same rules as the search: ni3hao3, nǐ hǎo, v = ü ... (tones typed must match)
     const t = canon(lang, typed); if (!t) return null;
     if (t === canon(lang, correct)) return true;
     return String(correct == null ? '' : correct).split(/[/;؛|،]/).some((p) => { const c = canon(lang, p); return c && c === t; });
@@ -5977,7 +5989,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
         h('button', { class: 'btn sm pri', type: 'button', onclick: beginTyping }, 'ابدأ'), cancel);
     } else if (T.phase === 'answer') {
       el.tcount = h('span', { class: 'tp-n' });
-      b.append(dim('اكتب ما تتذكره (' + (MC.LANGS.find((l) => l.key === T.lang) || {}).label + ') لكل كلمة، ثم اضغط إتمام.'), el.tcount, h('button', { class: 'btn sm pri', type: 'button', onclick: finishTyping }, 'إتمام'), cancel);
+      b.append(dim('اكتب ما تتذكره (' + (MC.LANGS.find((l) => l.key === T.lang) || {}).label + ') لكل كلمة، ثم اضغط إتمام.' + (T.lang === 'pin' ? ' (بينيين: ni3 hao3 · nǐ hǎo · v = ü)' : '')), el.tcount, h('button', { class: 'btn sm pri', type: 'button', onclick: finishTyping }, 'إتمام'), cancel);
       updateTypeCount();
     } else {
       const ok = Object.keys(T.res).filter((k) => T.res[k].ok).length; const n = Object.keys(T.res).length;

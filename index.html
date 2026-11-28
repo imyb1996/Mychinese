@@ -413,6 +413,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ui-totop { inset-inline-end: 66px; }
 @media print { .ui-mute { display: none !important; } }
 
+/* per-word +1 / -1 buttons and the desktop gear (shows / hides the word's buttons) */
+.sc-b { width: 34px; height: 34px; border-radius: 9px; border: 1px solid transparent; background: transparent; cursor: pointer; font: 700 12.5px var(--fm); }
+.sc-b.up { color: #16a34a; } .sc-b.dn { color: #dc2626; } .sc-b:hover { border-color: currentColor; background: var(--hov); }
+.ui-gear { flex: none; width: 32px; height: 32px; border-radius: 9px; border: 1px solid transparent; background: transparent; display: grid; place-items: center; cursor: pointer; color: #64748b; }
+.ui-gear:hover { background: var(--hov); border-color: var(--bd); } .ui-gear .ic { width: 18px; height: 18px; }
+.gear-on > .ui-gear, .gear-on .ui-cd-top .ui-gear { color: var(--bl); background: var(--bll); }
+@media (min-width: 721px) { .ui-it:not(.gear-on):not(.tp-row) .ui-acts, .ui-cd:not(.gear-on):not(.tp-row) .ui-acts { display: none; } }
+@media (max-width: 720px) { .ui-gear { display: none; } }
+
+/* direct typing test */
+.ui-rtype { gap: 8px; background: var(--yl, #fff7e0); border-radius: 10px; padding: 6px 10px; align-items: center; }
+.ui-rtype[hidden] { display: none; }
+.tp-t { font-size: 13.5px; } .tp-n { font-size: 12.5px; font-weight: 700; }
+.ui-r2 .btn.on { background: var(--bl); border-color: var(--bl); color: #fff; }
+.t-ans { min-width: 0; } .tp-in { width: 100%; min-height: 34px; }
+.tp-in.ok { border-color: #16a34a; background: #e3f5ea; color: #14532d; } .tp-in.bad { border-color: #dc2626; background: #fdeceb; color: #7f1d1d; }
+.tp-fb { font-size: 12.5px; margin-top: 3px; } .tp-fb.ok { color: #15803d; } .tp-fb.bad { color: #b91c1c; } .tp-fb.skip { color: var(--dm); }
+.tp-row .ui-acts.tp-sc { display: flex !important; opacity: 1; width: auto; flex: none; margin: 0; padding: 0; border: 0; }
+
 /* ===== quiz.css ===== */
 /* ============================================================
    quiz.css — quiz wizard + scores statistics. All classes prefixed qz-.
@@ -1328,6 +1347,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     check: '<path d="M20 6L9 17l-5-5"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
     warn: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
     clean: '<path d="M3 21h18M5 21V10l7-7 7 7v11"/><path d="M10 21v-6h4v6"/>',
   };
   // MC.icon('edit') -> SVG markup string; MC.ico('edit') -> <span> element (for MC.h children)
@@ -3612,6 +3632,32 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   MC.Quiz.openStats = openStats;
 })(typeof globalThis !== 'undefined' ? globalThis : window);
 
+/* ===== typing.js ===== */
+/* ============================================================
+   typing.js — answer checking for the «direct typing test» (pure, no DOM).
+   MC.Typing.check(lang, typed, correct) -> null (empty answer, ignored) | true | false
+   Spaces, punctuation, case, Arabic diacritics / hamza forms and (for pinyin) tone marks / tone numbers are ignored.
+   The correct text may list alternatives («好/好的», «مرحبا / أهلا»): the whole text or any one part is accepted.
+   ============================================================ */
+(function (g) {
+  'use strict';
+  const MC = g.MC;
+  const PUNCT = /[\s　.,;:!?'"’‘“”()[\]{}<>«»…·、。，！？：；（）《》【】—–\-_/\\|~`*^%$#@&+=،؛؟]/g;
+  function canon(lang, s) {
+    s = String(s == null ? '' : s).normalize('NFKC');
+    if (lang === 'zh') return s.replace(PUNCT, '');
+    s = MC.norm(s).replace(PUNCT, '');
+    if (lang === 'pin') s = s.replace(/[0-9]/g, '').replace(/v/g, 'u');   // tone numbers are ignored; v = ü (norm turns ü into u)
+    return s;
+  }
+  function check(lang, typed, correct) {
+    const t = canon(lang, typed); if (!t) return null;
+    if (t === canon(lang, correct)) return true;
+    return String(correct == null ? '' : correct).split(/[/;؛|،]/).some((p) => { const c = canon(lang, p); return c && c === t; });
+  }
+  MC.Typing = { check, canon };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /* ===== print.js ===== */
 /* ============================================================
    print.js — printing: list / cards / flash cards (front + mirrored back).
@@ -5414,7 +5460,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const MC = g.MC; const h = MC.h; const esc = MC.esc;
   const UI = (MC.UI = MC.UI || {});
   const rng = { from: '', to: '' };   // the «from … to …» sub-group range typed in the sub-group menu (kept while the menu re-renders)
-  const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', searchAll: false, dupOnly: false, hiddenMode: 'exclude', sel: new Set(), limit: 150, views: [] });
+  const S = (UI.state = { group: 'all', level: '', c1: '', c2: [], q: '', searchAll: false, dupOnly: false, hiddenMode: 'exclude', sel: new Set(), gear: new Set(), limit: 150, views: [] });   // gear = words whose action buttons are shown (desktop)
   const MUTE = { on: false };   // sound mute (bottom button): never saved, so the sound is ON every time the app is opened
   const ICO_SND = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
   const ICO_MUTE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/></svg>';
@@ -5424,6 +5470,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     if (MUTE.on) { if (explicit) MC.toast('الصوت مكتوم — اضغط زر الصوت أسفل الشاشة لإلغاء الكتم', 'err'); return; }
     MC.speak(it.zh);
   }
+  let T = null;   // direct typing test state (see «direct typing test» below)
   const TP = { mode: 'up', y: 0 };   // bottom button: 'up' = scroll to the top (remembers where you were), then 'back' = return to that place
   const NV = { tab: '', pop: false, popDirty: false, ls: 0, cur: { c1: null, c2: null }, v: {}, restored: false };   // lesson navigator state: opened button, multi-select list open?, lesson on screen
 
@@ -5464,11 +5511,13 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const printBtn = btn('print', 'طباعة', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للطباعة', 'err'); need('Print', 'open') && MC.Print.open(r, { title: UI.scopeTitle() }); });
     const quizBtn = btn('quiz', 'اختبار', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('Quiz', 'open') && MC.Quiz.open(r, { title: UI.scopeTitle() }); });
     const aiBtn = btn('sparkle', 'اختبار AI', () => { const r = UI.scopeRows(); if (!r.length) return MC.toast('لا توجد عناصر للاختبار', 'err'); need('AIQ', 'open') && MC.AIQ.open(r, { title: UI.scopeTitle() }); }, '', 'اختبار بالذكاء الاصطناعي: نسخ نص جاهز لأي مساعد');
+    el.typeBtn = btn('edit', 'اختبار كتابة', () => startTyping(), '', 'اختبار الكتابة المباشرة: اكتب ما تتذكره بدل إحدى اللغات');
     const statsBtn = btn('stats', 'الدرجات', () => need('Quiz', 'openStats') && MC.Quiz.openStats());
     const setBtn = btn('settings', 'الإعدادات', () => UI.openSettings());
     const clsBtn = btn('layers', 'إدارة المجموعات', () => UI.openClassManager(S.group), '', 'إدارة المجموعات: إضافة وترتيب وتعديل وحذف المجموعات الرئيسية والفرعية');
     const dataBtn = btn('data', 'البيانات', () => UI.openData());
     el.chips = h('nav', { class: 'ui-groups', 'aria-label': 'مصادر البيانات' });
+    el.tbar = h('div', { class: 'ui-row ui-rtype', hidden: true });   // direct typing test bar
     el.nav = h('div', { class: 'ui-nav' });   // lesson navigator: level / main group / sub-group buttons (see renderNav)
     el.dup = h('button', { class: 'chip', type: 'button', title: 'إظهار العناصر المكررة فقط', onclick: () => { S.dupOnly = !S.dupOnly; S.limit = STEP; render(); } }, MC.ico('repeat'), 'مكررات');
     el.hid = h('button', { class: 'chip', type: 'button', title: 'عرض الكلمات المخفية فقط (للتراجع عن الإخفاء)', onclick: () => { S.hiddenMode = S.hiddenMode === 'only' ? 'exclude' : 'only'; S.limit = STEP; S.sel.clear(); render(); } });
@@ -5490,9 +5539,9 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     const top = h('header', { class: 'ui-top' },
       h('div', { class: 'ui-row ui-r1' }, cluster('ui-c-brand', h('div', { class: 'ui-brand' }, h('div', { class: 'logo', text: '字' }), h('span', { class: 't', text: 'قاموس الصينية' }))), sepEl(), (el.tabsCl = cluster('ui-c-tabs', el.chips))),
       (el.pin = h('div', { class: 'ui-pin' }, (el.srcRow = h('div', { class: 'ui-row ui-rsrc' })), h('div', { class: 'ui-row ui-rnav' }, el.nav), h('div', { class: 'ui-row ui-rsearch' }, cluster('ui-c-search', h('div', { class: 'ui-search' }, el.search, el.clear), el.scope)))),
-      h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, statsBtn), sepEl(), cluster('', setBtn, clsBtn, dataBtn)),
+      h('div', { class: 'ui-row ui-r2' }, cluster('', addBtn, bulkBtn), sepEl(), cluster('', printBtn), sepEl(), cluster('', quizBtn, aiBtn, el.typeBtn, statsBtn), sepEl(), cluster('', setBtn, clsBtn, dataBtn)),
       h('div', { class: 'ui-row ui-r3' }, cluster('ui-c-view', el.dup, el.hid, el.langs, el.fnt, el.view, el.grp), sepEl(), cluster('ui-c-info', el.info)));
-    el.top = top;
+    el.top = top; el.pin.appendChild(el.tbar);
     el.list = h('main', { class: 'ui-list', id: 'list' });
     el.more = h('div', { class: 'ui-more' });
     el.selbar = h('div', { class: 'ui-selbar', hidden: true });
@@ -5507,6 +5556,11 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     // delegated events for the list
     el.list.addEventListener('click', onListClick);
     lpSetup();
+    el.list.addEventListener('input', (e) => { const t = e.target; if (T && t.matches && t.matches('input.tp-in')) { T.answers[+t.dataset.id] = t.value; updateTypeCount(); } });
+    el.list.addEventListener('keydown', (e) => {   // Enter in an answer box → the next box
+      const t = e.target; if (e.key !== 'Enter' || !T || !t.matches || !t.matches('input.tp-in')) return;
+      e.preventDefault(); const ins = MC.$$('input.tp-in', el.list); const nx = ins[ins.indexOf(t) + 1]; if (nx) nx.focus();
+    });
     el.list.addEventListener('change', (e) => {
       const t = e.target; if (!t.matches) return;
       if (t.matches('input[data-act="selgrp"]')) { // header checkbox: select / unselect everything DISPLAYED in that group
@@ -5579,6 +5633,8 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     else if (act === 'down') MC.moveItemBy(id, 1);
     else if (act === 'speak') speakItem(MC.getItem(id), true);
     else if (act === 'hide') { const nowHidden = !MC.isHidden(id); S.sel.delete(id); MC.setHidden([id], nowHidden); MC.toast(nowHidden ? 'أُخفيت الكلمة — تجدها في زر «المخفية»' : 'أُعيدت الكلمة للعرض', 'ok'); }
+    else if (act === 'sc1' || act === 'scm1') { if (MC.Scores && MC.Scores.applyDeltas) MC.Scores.applyDeltas([[id, act === 'sc1' ? 1 : -1, 0]]); else MC.toast('وحدة الدرجات غير متاحة', 'err'); }
+    else if (act === 'gear') { if (S.gear.has(id)) S.gear.delete(id); else S.gear.add(id); if (row) row.classList.toggle('gear-on', S.gear.has(id)); }
     else if (act === 'addc2') UI.openItemDialog({ mode: 'add', c2: +b.dataset.c2 });
   }
   UI.deleteOne = async (id) => {
@@ -5594,6 +5650,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   function compute() {
     const all = S.searchAll && S.q.trim();   // search everything: no data-source / sub-group filter, hidden words included
     S.views = MC.query(all ? { level: '', c1: '', c2: [], q: S.q, dupOnly: S.dupOnly, hidden: 'all' } : { group: S.group, level: '', c1: '', c2: S.c2, q: S.q, dupOnly: S.dupOnly, hidden: S.hiddenMode });
+    if (T && T.ids) S.views = S.views.filter((v) => T.ids.has(v.id));   // typing test: only the words taken into the test
   }
 
   function renderChips() {
@@ -5830,7 +5887,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   const ab = (icon, title, act) => '<button data-act="' + (act || icon) + '" title="' + title + '" aria-label="' + title + '">' + MC.icon(icon) + '</button>';
   function actsHTML(v, reorder) {
     const hid = MC.isHidden(v.id);
-    return '<div class="ui-acts">' + (MC.canSpeak() ? ab('speak', 'نطق') : '') + ab('edit', 'تعديل') + ab('dup', 'تكرار (نسخ إلى إضافة جديدة)') +
+    return '<div class="ui-acts">' + (MC.canSpeak() ? ab('speak', 'نطق') : '') + ab('edit', 'تعديل') + ab('dup', 'تكرار (نسخ إلى إضافة جديدة)') + '<button class="sc-b up" data-act="sc1" title="+1 درجة" aria-label="+1 درجة">+1</button><button class="sc-b dn" data-act="scm1" title="−1 درجة" aria-label="−1 درجة">−1</button>' +
       (reorder ? ab('up', 'تحريك لأعلى') + ab('down', 'تحريك لأسفل') : '') + (hid ? ab('show', 'إظهار الكلمة (إلغاء الإخفاء)', 'hide') : ab('hide', 'إخفاء الكلمة')) + ab('del', 'حذف') + '</div>';
   }
   function tagsHTML(v) {
@@ -5841,12 +5898,77 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
     return t;
   }
   function itemHTML(v, reorder, cards) {
+    if (T && T.ids) return typeRowHTML(v, cards);
     const sel = S.sel.has(v.id); const cells = MC.visibleLangs().map((k) => '<div class="t-' + k + '"' + (k === 'zh' ? ' lang="zh-CN"' : '') + '>' + esc(v[k]) + '</div>').join('');
     const chk = '<label class="ui-sel"><input type="checkbox" data-act="sel"' + (sel ? ' checked' : '') + ' aria-label="تحديد"></label>';
     const no = MC.settings.showSort ? '<span class="ui-no">' + Math.round(v.sort) + '</span>' : '';
-    const open = (S.openId === v.id ? ' open' : '') + (S.focusId === v.id ? ' focus' : '');
-    if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + actsHTML(v, reorder) + '</div>';
-    return '<div class="ui-it' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + actsHTML(v, reorder) + '</div>';
+    const open = (S.openId === v.id ? ' open' : '') + (S.focusId === v.id ? ' focus' : '') + (S.gear.has(v.id) ? ' gear-on' : '');
+    const gear = '<button class="ui-gear" data-act="gear" title="أزرار الكلمة" aria-label="أزرار الكلمة">' + MC.icon('gear') + '</button>';
+    if (cards) return '<div class="ui-cd' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '"><div class="ui-cd-top">' + chk + no + '<span class="ui-sp"></span>' + tagsHTML(v) + gear + '</div>' + cells + actsHTML(v, reorder) + '</div>';
+    return '<div class="ui-it' + (sel ? ' sel' : '') + open + '" data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '">' + chk + no + '<div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + gear + actsHTML(v, reorder) + '</div>';
+  }
+  /* ---------- direct typing test ----------
+     setup (choose the language to type, the languages to show) → answering (a text box replaces the hidden language on every word)
+     → «إتمام» (checks, +1 for every correct answer, wrong / empty answers cost nothing) → review (corrections, manual +1 / −1) → «إنهاء». «إلغاء» leaves at any time. */
+  function typeCols() { return MC.LANGS.filter((l) => l.key === T.lang || T.show.indexOf(l.key) >= 0).map((l) => (l.key === T.lang ? '1.6fr' : { zh: '1.1fr', pin: '1fr', ar: '1.2fr', en: '1.2fr' }[l.key])).join(' '); }
+  const scBtns = () => '<button class="sc-b up" data-act="sc1" title="+1 درجة" aria-label="+1 درجة">+1</button><button class="sc-b dn" data-act="scm1" title="−1 درجة" aria-label="−1 درجة">−1</button>';
+  function typeRowHTML(v, cards) {
+    const lang = T.lang; const review = T.phase === 'review'; const r = T.res[v.id]; const ans = T.answers[v.id] || '';
+    const label = (MC.LANGS.find((l) => l.key === lang) || {}).label || '';
+    let fb = '';
+    if (review) fb = r ? '<div class="tp-fb ' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓ ' : '✗ الصحيح: ') + '<b>' + esc(v[lang]) + '</b>' + (r.ok ? ' (+1)' : '') + '</div>' : '<div class="tp-fb skip">لم تُجب — الصحيح: <b>' + esc(v[lang]) + '</b></div>';
+    const box = '<div class="t-ans"><input class="inp tp-in' + (r ? (r.ok ? ' ok' : ' bad') : '') + '" type="text" data-id="' + v.id + '" autocomplete="off" autocapitalize="off" spellcheck="false" dir="' + (lang === 'ar' ? 'rtl' : 'ltr') + '"' + (lang === 'zh' ? ' lang="zh-CN"' : '') + ' placeholder="اكتب ' + esc(label) + '" value="' + esc(ans) + '"' + (review ? ' readonly' : '') + '>' + fb + '</div>';
+    const cells = MC.LANGS.map((l) => (l.key === lang ? box : T.show.indexOf(l.key) >= 0 ? '<div class="t-' + l.key + '"' + (l.key === 'zh' ? ' lang="zh-CN"' : '') + '>' + esc(v[l.key]) + '</div>' : '')).join('');
+    const attrs = ' data-id="' + v.id + '" data-c1="' + v.c1 + '" data-c2="' + v.c2 + '" style="' + groupColors(v.group) + '"';
+    const sc = review ? '<div class="ui-acts tp-sc">' + scBtns() + '</div>' : '';
+    if (cards) return '<div class="ui-cd tp-row"' + attrs + '><div class="ui-cd-top"><span class="ui-sp"></span>' + tagsHTML(v) + '</div>' + cells + sc + '</div>';
+    return '<div class="ui-it tp-row"' + attrs + '><div class="ui-cells">' + cells + '</div><div class="ui-meta">' + tagsHTML(v) + '</div>' + sc + '</div>';
+  }
+  const typedCount = () => { let n = 0; if (T && T.ids) T.ids.forEach((id) => { if (String(T.answers[id] || '').trim()) n++; }); return n; };
+  function updateTypeCount() { if (el.tcount && T) el.tcount.textContent = typedCount() + ' من ' + T.ids.size + ' مكتوبة'; }
+  function startTyping() { if (T) return; T = { phase: 'setup', lang: 'ar', show: ['zh', 'pin'], ids: null, answers: {}, res: {} }; renderTypeBar(); }
+  function beginTyping() {
+    if (!T.show.length) return MC.toast('اختر لغة واحدة على الأقل للعرض', 'err');
+    const rows = UI.scopeRows().filter((v) => String(v[T.lang] || '').trim());
+    if (!rows.length) return MC.toast('لا توجد عناصر للاختبار', 'err');
+    T.ids = new Set(rows.map((v) => v.id)); T.phase = 'answer'; T.answers = {}; T.res = {}; S.sel.clear();
+    render(); renderTypeBar(); g.scrollTo(0, 0);
+  }
+  function finishTyping() {
+    const pairs = []; T.res = {};
+    T.ids.forEach((id) => {
+      const it = MC.getItem(id); const ok = it ? MC.Typing.check(T.lang, T.answers[id], it[T.lang]) : null; if (ok == null) return;   // empty answers are ignored
+      T.res[id] = { ok }; if (ok) pairs.push([id, 1, 1]);                                                                         // wrong answers: corrected, no deduction
+    });
+    T.phase = 'review'; renderTypeBar(); renderList();
+    if (pairs.length && MC.Scores && MC.Scores.applyDeltas) MC.Scores.applyDeltas(pairs);
+    MC.toast('صحيح ' + pairs.length + ' من ' + Object.keys(T.res).length + (pairs.length ? ' — أُضيفت +1 لكل إجابة صحيحة' : ''), pairs.length ? 'ok' : '');
+  }
+  function endTyping() { T = null; render(); renderTypeBar(); }
+  async function cancelTyping() {
+    if (T && T.phase === 'answer' && typedCount() && !(await MC.confirm('إلغاء الاختبار؟ ستضيع الإجابات المكتوبة.', { danger: true, okLabel: 'إلغاء الاختبار' }))) return;
+    endTyping();
+  }
+  function renderTypeBar() {
+    const b = el.tbar; if (!b) return; b.innerHTML = ''; b.hidden = !T; if (el.typeBtn) el.typeBtn.classList.toggle('on', !!T); el.tcount = null; if (!T) return;
+    const chip = (label, on, fn, dis) => h('button', { class: 'chip' + (on ? ' on' : ''), type: 'button', disabled: !!dis, 'aria-pressed': on ? 'true' : 'false', onclick: fn }, label);
+    const cancel = h('button', { class: 'btn sm', type: 'button', onclick: cancelTyping }, 'إلغاء');
+    const dim = (t) => h('span', { class: 'ui-dim', text: t });
+    b.appendChild(h('b', { class: 'tp-t', text: 'اختبار الكتابة المباشرة' }));
+    if (T.phase === 'setup') {
+      b.append(dim('اللغة المخفية (التي ستكتبها):'),
+        h('div', { class: 'ui-cl' }, MC.LANGS.map((l) => chip(l.label, T.lang === l.key, () => { T.lang = l.key; T.show = T.show.filter((k) => k !== l.key); renderTypeBar(); }))),
+        dim('اللغات المعروضة:'),
+        h('div', { class: 'ui-cl' }, MC.LANGS.map((l) => chip(l.label, T.show.indexOf(l.key) >= 0, () => { const i = T.show.indexOf(l.key); if (i >= 0) T.show.splice(i, 1); else T.show.push(l.key); renderTypeBar(); }, l.key === T.lang))),
+        h('button', { class: 'btn sm pri', type: 'button', onclick: beginTyping }, 'ابدأ'), cancel);
+    } else if (T.phase === 'answer') {
+      el.tcount = h('span', { class: 'tp-n' });
+      b.append(dim('اكتب ما تتذكره (' + (MC.LANGS.find((l) => l.key === T.lang) || {}).label + ') لكل كلمة، ثم اضغط إتمام.'), el.tcount, h('button', { class: 'btn sm pri', type: 'button', onclick: finishTyping }, 'إتمام'), cancel);
+      updateTypeCount();
+    } else {
+      const ok = Object.keys(T.res).filter((k) => T.res[k].ok).length; const n = Object.keys(T.res).length;
+      b.append(h('span', { class: 'tp-n', text: 'صحيح ' + ok + ' من ' + n + ' (+' + ok + ' درجة) — عدّل الدرجات بـ +1 / −1 أمام كل كلمة' }), h('button', { class: 'btn sm pri', type: 'button', onclick: endTyping }, 'إنهاء'), cancel);
+    }
   }
   function buildBlocks() {
     const out = []; const grouped = MC.settings.grouped; let c1 = null; let c2 = null; const n1 = new Map(); const n2 = new Map();
@@ -5882,7 +6004,7 @@ window.MC_GS = "/**\n * Mychinese backend — Google Apps Script bound to the da
   function renderList() {
     blocks = buildBlocks(); shown = 0;
     el.list.className = 'ui-list' + (MC.settings.view === 'cards' ? ' cards' : '');
-    el.list.style.setProperty('--cols', colTemplate());
+    el.list.style.setProperty('--cols', T && T.ids ? typeCols() : colTemplate());
     el.list.innerHTML = '';
     if (!blocks.length) {
       const none = !MC.data.items.length; const st = MC.Source ? MC.Source.state.status : '';
